@@ -56,24 +56,27 @@ async function runTests() {
   }
 
   console.log('\n=== TEST 5: Analyze - Real Resume + Realistic SDE Job Description ===');
-  const sdeJobDescription = `Job Title: Backend Software Engineer (Node.js)
-
-About the Role:
-We are looking for a motivated Backend Engineer to build high-performance distributed backend services and APIs.
-
-Key Responsibilities:
-- Design, build, and maintain scalable REST APIs and microservices using Node.js, Express, and MongoDB / PostgreSQL.
-- Architect real-time communication systems and asynchronous background task processing using Redis, BullMQ, and WebSockets.
-- Optimize database schemas, queries, and caching mechanisms.
-- Collaborate with frontend engineers working in React/Next.js.
+  const sdeJobDescription = `Job Title: Backend Software Engineer
 
 Requirements:
-- Bachelor's degree in Computer Science, Software Engineering, or equivalent.
-- Strong hands-on experience with JavaScript, Node.js, Express, and RESTful architecture.
-- Solid database fundamentals in MongoDB, MySQL, or Redis.
-- Knowledge of asynchronous event-driven design, message queues (BullMQ/RabbitMQ), and Socket.IO.
-- Familiarity with Docker, Kubernetes, and AWS deployment is a plus.
-- Good understanding of Data Structures, Algorithms, and System Design.`;
+- Node.js
+- Express.js
+- MongoDB or PostgreSQL
+- Redis
+- Docker
+- Strong understanding of relational database systems
+- Experience building scalable REST APIs
+
+Preferred:
+- AWS
+- Kubernetes
+- Microservices architecture
+
+Responsibilities:
+- Design and maintain reliable backend APIs and microservices
+- Implement queue-based asynchronous background workers
+- Optimize database queries and schema designs
+- Collaborate with cross-functional frontend teams`;
 
   const fdSuccess = new FormData();
   fdSuccess.append('resume', new Blob([fs.readFileSync('Resume.pdf.pdf')], { type: 'application/pdf' }), 'Resume.pdf.pdf');
@@ -91,7 +94,16 @@ Requirements:
 
   console.log('\n--- VERIFYING STRUCTURED OUTPUT ---');
   console.log('success === true:', successJson.success === true);
-  console.log('analysis is object (not markdown string):', typeof successJson.analysis === 'object' && !Array.isArray(successJson.analysis) && typeof successJson.analysis !== 'string');
+
+  // Requirements checks
+  console.log('requirements is object:', typeof successJson.requirements === 'object' && successJson.requirements !== null);
+  console.log('requirements.jobTitle is string:', typeof successJson.requirements?.jobTitle === 'string');
+  console.log('requirements.requiredSkills is Array:', Array.isArray(successJson.requirements?.requiredSkills));
+  console.log('requirements.preferredSkills is Array:', Array.isArray(successJson.requirements?.preferredSkills));
+  console.log('requirements.responsibilities is Array:', Array.isArray(successJson.requirements?.responsibilities));
+
+  // Analysis checks
+  console.log('analysis is object:', typeof successJson.analysis === 'object' && successJson.analysis !== null);
   console.log('analysis.matchedSkills is Array:', Array.isArray(successJson.analysis?.matchedSkills));
   console.log('analysis.missingSkills is Array:', Array.isArray(successJson.analysis?.missingSkills));
   console.log('analysis.relevantExperience is Array:', Array.isArray(successJson.analysis?.relevantExperience));
@@ -100,17 +112,27 @@ Requirements:
   if (
     resSuccess.status !== 200 ||
     successJson.success !== true ||
+    typeof successJson.requirements !== 'object' ||
+    typeof successJson.requirements.jobTitle !== 'string' ||
+    !Array.isArray(successJson.requirements.requiredSkills) ||
+    !Array.isArray(successJson.requirements.preferredSkills) ||
+    !Array.isArray(successJson.requirements.responsibilities) ||
     typeof successJson.analysis !== 'object' ||
-    typeof successJson.analysis === 'string' ||
     !Array.isArray(successJson.analysis.matchedSkills) ||
     !Array.isArray(successJson.analysis.missingSkills) ||
     !Array.isArray(successJson.analysis.relevantExperience) ||
     typeof successJson.analysis.preliminaryAssessment !== 'string'
   ) {
-    throw new Error('Structured analysis response format verification failed');
+    throw new Error('Verification of structured requirements and analysis failed');
   }
 
-  console.log('\n--- FULL STRUCTURED RESPONSE ---');
+  // Check grounding of requirements
+  const reqSkillsLower = successJson.requirements.requiredSkills.map(s => s.toLowerCase());
+  console.log('\nGrounded required skills extracted:', successJson.requirements.requiredSkills);
+  console.log('Grounded preferred skills extracted:', successJson.requirements.preferredSkills);
+  console.log('Grounded responsibilities extracted:', successJson.requirements.responsibilities);
+
+  console.log('\n--- FULL RESPONSE PAYLOAD ---');
   console.log(JSON.stringify(successJson, null, 2));
 
   console.log('\n=== ALL INTEGRATION TESTS PASSED SUCCESSFULLY! ===');
