@@ -10,6 +10,10 @@ import {
   RECOMMENDATION_THRESHOLDS,
   ROADMAP_PRIORITY_MATRIX
 } from './src/services/recommendationService.js';
+import {
+  enrichLearningRoadmap,
+  searchLearningResources
+} from './src/services/webSearchService.js';
 import { RecommendationSchema } from './src/utils/recommendationSchema.js';
 
 const BASE_URL = 'http://localhost:8000';
@@ -114,7 +118,6 @@ async function runTests() {
   if (rec2.decision !== 'apply_with_gaps' || rec2.priorityGaps.length !== 2) {
     throw new Error(`M9 Test 2 failed: expected apply_with_gaps with 2 gaps, got ${JSON.stringify(rec2)}`);
   }
-  // Check gap ordering: required gap (PostgreSQL) must come before preferred gap (Kubernetes)
   if (rec2.priorityGaps[0].skill !== 'PostgreSQL' || rec2.priorityGaps[1].skill !== 'Kubernetes') {
     throw new Error(`M9 Test 2 failed: required gaps must be prioritized before preferred gaps`);
   }
@@ -197,7 +200,108 @@ async function runTests() {
 
   console.log('--- ALL M9 RECOMMENDATION & ROADMAP UNIT TESTS PASSED ---\n');
 
-  console.log('=== PART C: API INTEGRATION TESTS ===');
+  console.log('=== PART C: M10 WEB SEARCH ENRICHMENT UNIT TESTS ===');
+
+  // M10 Test A: Learning roadmap with one gap (PostgreSQL)
+  console.log('\n--- M10 Test A: One gap enrichment ---');
+  const roadmapOne = [
+    { skill: 'PostgreSQL', priority: 'medium', category: 'required', reason: 'PostgreSQL is required.' }
+  ];
+  const enrichedOne = await enrichLearningRoadmap(roadmapOne);
+  console.log(`Enriched items count: ${enrichedOne.length}`);
+  if (enrichedOne.length !== 1 || enrichedOne[0].skill !== 'PostgreSQL') {
+    throw new Error(`M10 Test A failed: expected 1 item for PostgreSQL, got ${JSON.stringify(enrichedOne)}`);
+  }
+  if (!Array.isArray(enrichedOne[0].resources)) {
+    throw new Error('M10 Test A failed: resources must be an array');
+  }
+  if (enrichedOne[0].resources.length > 0) {
+    const firstRes = enrichedOne[0].resources[0];
+    console.log(`First resource: "${firstRes.title}" (${firstRes.url}) from ${firstRes.source}`);
+    if (!firstRes.title || !firstRes.url || !firstRes.source) {
+      throw new Error(`M10 Test A failed: resource structure invalid: ${JSON.stringify(firstRes)}`);
+    }
+  }
+  console.log('M10 Test A PASSED');
+
+  // M10 Test B: Multiple gaps (PostgreSQL, Kubernetes)
+  console.log('\n--- M10 Test B: Multiple gaps enrichment ---');
+  const roadmapMulti = [
+    { skill: 'PostgreSQL', priority: 'medium', category: 'required', reason: 'PostgreSQL is required.' },
+    { skill: 'Kubernetes', priority: 'medium', category: 'preferred', reason: 'Kubernetes is preferred.' }
+  ];
+  const enrichedMulti = await enrichLearningRoadmap(roadmapMulti);
+  console.log(`Enriched multi count: ${enrichedMulti.length}`);
+  if (enrichedMulti.length !== 2) {
+    throw new Error(`M10 Test B failed: expected 2 enriched items, got ${enrichedMulti.length}`);
+  }
+  if (enrichedMulti[0].skill !== 'PostgreSQL' || enrichedMulti[1].skill !== 'Kubernetes') {
+    throw new Error(`M10 Test B failed: skills mismatch: ${enrichedMulti.map(e => e.skill).join(', ')}`);
+  }
+  console.log('M10 Test B PASSED');
+
+  // M10 Test C: No roadmap gaps (empty roadmap)
+  console.log('\n--- M10 Test C: Empty roadmap ---');
+  const enrichedEmpty = await enrichLearningRoadmap([]);
+  console.log(`Enriched empty: length = ${enrichedEmpty.length}`);
+  if (!Array.isArray(enrichedEmpty) || enrichedEmpty.length !== 0) {
+    throw new Error(`M10 Test C failed: expected empty array for empty roadmap, got ${JSON.stringify(enrichedEmpty)}`);
+  }
+  console.log('M10 Test C PASSED');
+
+  // M10 Test D: Web search failure / graceful degradation
+  console.log('\n--- M10 Test D: Search failure handling ---');
+  const failureResult = await searchLearningResources('PostgreSQL', { timeoutMs: 1 }); // immediate timeout
+  console.log(`Timeout search result: ${JSON.stringify(failureResult)} (expected [])`);
+  if (!Array.isArray(failureResult) || failureResult.length !== 0) {
+    throw new Error('M10 Test D failed: search failure should return empty array without throwing');
+  }
+  const enrichedFailed = await enrichLearningRoadmap(roadmapOne, { timeoutMs: 1 });
+  if (enrichedFailed.length !== 1 || !Array.isArray(enrichedFailed[0].resources)) {
+    throw new Error('M10 Test D failed: enrichLearningRoadmap should preserve skill with empty resources on failure');
+  }
+  console.log('M10 Test D PASSED');
+
+  // M10 Test E: Core scoring isolation (verify web search has ZERO effect on score / recommendation)
+  console.log('\n--- M10 Test E: Core scoring & recommendation isolation ---');
+  const isolationReq = { requiredSkills: ['Node.js', 'PostgreSQL'], preferredSkills: ['Kubernetes'] };
+  const isolationMatches = { requirementMatches: [
+    { jdRequirement: 'Node.js', relationship: 'direct', resumeEvidence: ['Node.js'] },
+    { jdRequirement: 'PostgreSQL', relationship: 'related', resumeEvidence: ['MySQL'] },
+    { jdRequirement: 'Kubernetes', relationship: 'missing', resumeEvidence: [] }
+  ]};
+  const scoreBefore = calculateJobFitScore(isolationReq, isolationMatches);
+  const recBefore = generateCandidateRecommendation({ requirements: isolationReq, skillMatches: isolationMatches, score: scoreBefore });
+
+  // Enrich with web search
+  const resources = await enrichLearningRoadmap(recBefore.learningRoadmap);
+
+  const scoreAfter = calculateJobFitScore(isolationReq, isolationMatches);
+  const recAfter = generateCandidateRecommendation({ requirements: isolationReq, skillMatches: isolationMatches, score: scoreAfter });
+
+  if (
+    scoreBefore.overall !== scoreAfter.overall ||
+    scoreBefore.requiredScore !== scoreAfter.requiredScore ||
+    scoreBefore.preferredScore !== scoreAfter.preferredScore ||
+    recBefore.decision !== recAfter.decision ||
+    recBefore.strengths.length !== recAfter.strengths.length ||
+    recBefore.priorityGaps.length !== recAfter.priorityGaps.length
+  ) {
+    throw new Error('M10 Test E failed: web search mutated core score or recommendation');
+  }
+  console.log('M10 Test E PASSED: Core score and recommendation are completely isolated from web search');
+
+  // M10 Test F: Security check (no API keys, no resume dumps)
+  console.log('\n--- M10 Test F: Security check ---');
+  const serialized = JSON.stringify(resources);
+  if (serialized.includes('gsk_') || serialized.includes('GROQ_API_KEY')) {
+    throw new Error('M10 Test F failed: sensitive API key found in learning resources');
+  }
+  console.log('M10 Test F PASSED: No secrets in learning resources');
+
+  console.log('--- ALL M10 WEB SEARCH UNIT TESTS PASSED ---\n');
+
+  console.log('=== PART D: API INTEGRATION TESTS ===');
 
   console.log('\n=== TEST 1: Health Check ===');
   const healthRes = await fetch(`${BASE_URL}/api/health`);
@@ -319,6 +423,23 @@ Responsibilities:
   RecommendationSchema.parse(successJson.recommendation);
   console.log('Recommendation matches Zod schema: true');
 
+  // M10 Learning Resources checks
+  console.log('learningResources is Array:', Array.isArray(successJson.learningResources));
+  console.log(`learningResources count: ${successJson.learningResources.length}`);
+  for (const lr of successJson.learningResources) {
+    if (!lr.skill || typeof lr.skill !== 'string') {
+      throw new Error(`Invalid learningResource skill: ${JSON.stringify(lr)}`);
+    }
+    if (!Array.isArray(lr.resources)) {
+      throw new Error(`Invalid learningResource resources: ${JSON.stringify(lr)}`);
+    }
+    for (const resItem of lr.resources) {
+      if (!resItem.title || !resItem.url || !resItem.source) {
+        throw new Error(`Invalid learningResource item: ${JSON.stringify(resItem)}`);
+      }
+    }
+  }
+
   // Analysis checks
   console.log('analysis is object:', typeof successJson.analysis === 'object' && successJson.analysis !== null);
   console.log('analysis.matchedSkills is Array:', Array.isArray(successJson.analysis?.matchedSkills));
@@ -327,7 +448,8 @@ Responsibilities:
   if (
     resSuccess.status !== 200 ||
     successJson.success !== true ||
-    !['apply', 'apply_with_gaps', 'low_fit'].includes(successJson.recommendation?.decision)
+    !['apply', 'apply_with_gaps', 'low_fit'].includes(successJson.recommendation?.decision) ||
+    !Array.isArray(successJson.learningResources)
   ) {
     throw new Error('Verification of complete response payload failed');
   }
@@ -346,6 +468,15 @@ Responsibilities:
   for (const item of successJson.recommendation.learningRoadmap) {
     console.log(`- [PRIORITY: ${item.priority.toUpperCase()} | ${item.category}] ${item.skill}`);
     console.log(`  Reason: ${item.reason}`);
+  }
+
+  console.log('\n--- ENRICHED LEARNING RESOURCES ---');
+  for (const lr of successJson.learningResources) {
+    console.log(`\nSkill: [${lr.skill}] (${lr.resources.length} resources)`);
+    for (const r of lr.resources) {
+      console.log(`  - "${r.title}"`);
+      console.log(`    URL: ${r.url} (source: ${r.source})`);
+    }
   }
 
   console.log('\n--- FULL RESPONSE PAYLOAD ---');

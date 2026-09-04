@@ -7,6 +7,7 @@ import {
 } from '../services/aiService.js';
 import { calculateJobFitScore } from '../services/scoringService.js';
 import { generateCandidateRecommendation } from '../services/recommendationService.js';
+import { enrichLearningRoadmap } from '../services/webSearchService.js';
 
 /**
  * Controller handling resume-to-job analysis requests with semantic comparison and deterministic scoring.
@@ -90,7 +91,16 @@ export const analyzeJobFit = async (req, res) => {
       score
     });
 
-    // 8. Run structured qualitative job-fit analysis grounded in all structured contexts
+    // 8. Enrich learning roadmap with external authoritative learning resources
+    let learningResources = [];
+    try {
+      learningResources = await enrichLearningRoadmap(recommendation?.learningRoadmap || []);
+    } catch (searchError) {
+      // Graceful degradation: search failure does not fail the analysis request
+      learningResources = [];
+    }
+
+    // 9. Run structured qualitative job-fit analysis grounded in all structured contexts
     let analysis;
     try {
       analysis = await analyzeResumeJobFit(
@@ -109,7 +119,7 @@ export const analyzeJobFit = async (req, res) => {
       });
     }
 
-    // 9. Return complete response including deterministic score and recommendation
+    // 10. Return complete response including deterministic score, recommendation, and learning resources
     return res.status(200).json({
       success: true,
       resumeProfile,
@@ -117,6 +127,7 @@ export const analyzeJobFit = async (req, res) => {
       skillMatches,
       score,
       recommendation,
+      learningResources,
       analysis
     });
   } catch (error) {
