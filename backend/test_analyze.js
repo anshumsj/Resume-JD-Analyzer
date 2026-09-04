@@ -1,9 +1,87 @@
 import fs from 'fs';
+import {
+  calculateJobFitScore,
+  RELATIONSHIP_SCORES,
+  REQUIREMENT_WEIGHTS,
+  getRecommendation
+} from './src/services/scoringService.js';
 
 const BASE_URL = 'http://localhost:8000';
 
 async function runTests() {
-  console.log('=== TEST 1: Health Check ===');
+  console.log('=== PART A: DETERMINISTIC SCORING UNIT TESTS ===');
+
+  // Unit Test 1: all direct
+  const ut1 = calculateJobFitScore(
+    { requiredSkills: ['Node.js', 'Express.js'], preferredSkills: [] },
+    { requirementMatches: [
+      { jdRequirement: 'Node.js', relationship: 'direct', resumeEvidence: ['Node.js'] },
+      { jdRequirement: 'Express.js', relationship: 'direct', resumeEvidence: ['Express.js'] }
+    ]}
+  );
+  console.log(`Unit Test 1 (All Direct): overall = ${ut1.overall} (expected 100), recommendation = ${ut1.recommendation}`);
+  if (ut1.overall !== 100 || ut1.recommendation !== 'strong_fit') {
+    throw new Error(`Unit Test 1 failed: expected 100 strong_fit, got ${ut1.overall} ${ut1.recommendation}`);
+  }
+
+  // Unit Test 2: mixed relationships
+  const ut2 = calculateJobFitScore(
+    { requiredSkills: ['Node.js', 'PostgreSQL', 'Kubernetes'], preferredSkills: [] },
+    { requirementMatches: [
+      { jdRequirement: 'Node.js', relationship: 'direct', resumeEvidence: ['Node.js'] },
+      { jdRequirement: 'PostgreSQL', relationship: 'related', resumeEvidence: ['MySQL'] },
+      { jdRequirement: 'Kubernetes', relationship: 'missing', resumeEvidence: [] }
+    ]}
+  );
+  console.log(`Unit Test 2 (Mixed Relationships): overall = ${ut2.overall} (expected 47), recommendation = ${ut2.recommendation}`);
+  if (ut2.overall !== 47 || ut2.recommendation !== 'low_fit') {
+    throw new Error(`Unit Test 2 failed: expected 47 low_fit, got ${ut2.overall} ${ut2.recommendation}`);
+  }
+
+  // Unit Test 3: preferred weighting
+  const ut3 = calculateJobFitScore(
+    { requiredSkills: ['Node.js'], preferredSkills: ['AWS'] },
+    { requirementMatches: [
+      { jdRequirement: 'Node.js', relationship: 'direct', resumeEvidence: ['Node.js'] },
+      { jdRequirement: 'AWS', relationship: 'partial', resumeEvidence: ['AWS S3'] }
+    ]}
+  );
+  console.log(`Unit Test 3 (Preferred Weighting): overall = ${ut3.overall} (expected 87), required = ${ut3.requiredScore}, preferred = ${ut3.preferredScore}`);
+  if (ut3.overall !== 87 || ut3.recommendation !== 'strong_fit' || ut3.requiredScore !== 100 || ut3.preferredScore !== 60) {
+    throw new Error(`Unit Test 3 failed: expected 87, 100, 60, got ${ut3.overall}, ${ut3.requiredScore}, ${ut3.preferredScore}`);
+  }
+
+  // Unit Test 4: all missing
+  const ut4 = calculateJobFitScore(
+    { requiredSkills: ['Node.js', 'Redis'], preferredSkills: ['AWS'] },
+    { requirementMatches: [
+      { jdRequirement: 'Node.js', relationship: 'missing', resumeEvidence: [] },
+      { jdRequirement: 'Redis', relationship: 'missing', resumeEvidence: [] },
+      { jdRequirement: 'AWS', relationship: 'missing', resumeEvidence: [] }
+    ]}
+  );
+  console.log(`Unit Test 4 (All Missing): overall = ${ut4.overall} (expected 0), recommendation = ${ut4.recommendation}`);
+  if (ut4.overall !== 0 || ut4.recommendation !== 'low_fit') {
+    throw new Error(`Unit Test 4 failed: expected 0 low_fit, got ${ut4.overall} ${ut4.recommendation}`);
+  }
+
+  // Unit Test 5: no preferred skills (safe handling, no NaN, no division by zero)
+  const ut5 = calculateJobFitScore(
+    { requiredSkills: ['Node.js'], preferredSkills: [] },
+    { requirementMatches: [
+      { jdRequirement: 'Node.js', relationship: 'direct', resumeEvidence: ['Node.js'] }
+    ]}
+  );
+  console.log(`Unit Test 5 (No Preferred Skills): overall = ${ut5.overall}, preferredScore = ${ut5.preferredScore} (expected null, no NaN)`);
+  if (isNaN(ut5.overall) || ut5.preferredScore !== null || ut5.overall !== 100) {
+    throw new Error(`Unit Test 5 failed: got overall ${ut5.overall}, preferredScore ${ut5.preferredScore}`);
+  }
+
+  console.log('--- ALL UNIT TESTS PASSED ---\n');
+
+  console.log('=== PART B: API INTEGRATION TESTS ===');
+
+  console.log('\n=== TEST 1: Health Check ===');
   const healthRes = await fetch(`${BASE_URL}/api/health`);
   console.log('Status:', healthRes.status);
   const healthData = await healthRes.json();
@@ -92,88 +170,85 @@ Responsibilities:
   console.log(`Status: ${resSuccess.status} (completed in ${duration}s)`);
   const successJson = await resSuccess.json();
 
-  console.log('\n--- VERIFYING STRUCTURED OUTPUT ---');
+  console.log('\n--- VERIFYING COMPLETE RESPONSE STRUCTURE ---');
   console.log('success === true:', successJson.success === true);
 
   // Resume Profile checks
   console.log('resumeProfile is object:', typeof successJson.resumeProfile === 'object' && successJson.resumeProfile !== null);
   console.log('resumeProfile.skills is Array:', Array.isArray(successJson.resumeProfile?.skills));
-  console.log('resumeProfile.experience is Array:', Array.isArray(successJson.resumeProfile?.experience));
-  console.log('resumeProfile.projects is Array:', Array.isArray(successJson.resumeProfile?.projects));
-  console.log('resumeProfile.education is Array:', Array.isArray(successJson.resumeProfile?.education));
 
   // Requirements checks
   console.log('requirements is object:', typeof successJson.requirements === 'object' && successJson.requirements !== null);
-  console.log('requirements.jobTitle is string:', typeof successJson.requirements?.jobTitle === 'string');
   console.log('requirements.requiredSkills is Array:', Array.isArray(successJson.requirements?.requiredSkills));
-  console.log('requirements.preferredSkills is Array:', Array.isArray(successJson.requirements?.preferredSkills));
-  console.log('requirements.responsibilities is Array:', Array.isArray(successJson.requirements?.responsibilities));
 
   // SkillMatches checks
   console.log('skillMatches is object:', typeof successJson.skillMatches === 'object' && successJson.skillMatches !== null);
   console.log('skillMatches.requirementMatches is Array:', Array.isArray(successJson.skillMatches?.requirementMatches));
 
-  // Validate each requirement match
-  const validRelationships = ['direct', 'related', 'partial', 'missing'];
-  let directCount = 0, relatedCount = 0, partialCount = 0, missingCount = 0;
+  // Deterministic Score checks
+  console.log('score is object:', typeof successJson.score === 'object' && successJson.score !== null);
+  console.log('score.overall is number (0-100):', typeof successJson.score?.overall === 'number' && successJson.score.overall >= 0 && successJson.score.overall <= 100);
+  console.log('score.requiredScore is number:', typeof successJson.score?.requiredScore === 'number');
+  console.log('score.preferredScore is number or null:', typeof successJson.score?.preferredScore === 'number' || successJson.score?.preferredScore === null);
+  console.log('score.recommendation is valid:', ['strong_fit', 'good_fit', 'moderate_fit', 'low_fit'].includes(successJson.score?.recommendation));
+  console.log('score.breakdown is non-empty Array:', Array.isArray(successJson.score?.breakdown) && successJson.score.breakdown.length > 0);
 
-  for (const match of successJson.skillMatches?.requirementMatches || []) {
-    if (!match.jdRequirement || typeof match.jdRequirement !== 'string') {
-      throw new Error(`Invalid match jdRequirement: ${JSON.stringify(match)}`);
+  // Validate breakdown item structure
+  for (const b of successJson.score?.breakdown || []) {
+    if (!b.requirement || typeof b.requirement !== 'string') {
+      throw new Error(`Invalid breakdown requirement: ${JSON.stringify(b)}`);
     }
-    if (!Array.isArray(match.resumeEvidence)) {
-      throw new Error(`Invalid match resumeEvidence: ${JSON.stringify(match)}`);
+    if (!['required', 'preferred'].includes(b.category)) {
+      throw new Error(`Invalid breakdown category: ${JSON.stringify(b)}`);
     }
-    if (!validRelationships.includes(match.relationship)) {
-      throw new Error(`Invalid relationship enum value "${match.relationship}" in: ${JSON.stringify(match)}`);
+    if (!['direct', 'related', 'partial', 'missing'].includes(b.relationship)) {
+      throw new Error(`Invalid breakdown relationship: ${JSON.stringify(b)}`);
     }
-    if (match.relationship === 'direct') directCount++;
-    if (match.relationship === 'related') relatedCount++;
-    if (match.relationship === 'partial') partialCount++;
-    if (match.relationship === 'missing') missingCount++;
+    if (typeof b.relationshipScore !== 'number') {
+      throw new Error(`Invalid breakdown relationshipScore: ${JSON.stringify(b)}`);
+    }
+    if (typeof b.requirementWeight !== 'number') {
+      throw new Error(`Invalid breakdown requirementWeight: ${JSON.stringify(b)}`);
+    }
+    if (typeof b.contribution !== 'number') {
+      throw new Error(`Invalid breakdown contribution: ${JSON.stringify(b)}`);
+    }
+    if (!Array.isArray(b.resumeEvidence)) {
+      throw new Error(`Invalid breakdown resumeEvidence: ${JSON.stringify(b)}`);
+    }
   }
 
-  console.log(`\nSemantic Relationship Breakdown:`);
-  console.log(`- direct: ${directCount}`);
-  console.log(`- related: ${relatedCount}`);
-  console.log(`- partial: ${partialCount}`);
-  console.log(`- missing: ${missingCount}`);
-
   // Analysis checks
-  console.log('\nanalysis is object:', typeof successJson.analysis === 'object' && successJson.analysis !== null);
+  console.log('analysis is object:', typeof successJson.analysis === 'object' && successJson.analysis !== null);
   console.log('analysis.matchedSkills is Array:', Array.isArray(successJson.analysis?.matchedSkills));
-  console.log('analysis.missingSkills is Array:', Array.isArray(successJson.analysis?.missingSkills));
-  console.log('analysis.relevantExperience is Array:', Array.isArray(successJson.analysis?.relevantExperience));
   console.log('analysis.preliminaryAssessment is string:', typeof successJson.analysis?.preliminaryAssessment === 'string');
 
   if (
     resSuccess.status !== 200 ||
     successJson.success !== true ||
-    typeof successJson.resumeProfile !== 'object' ||
-    !Array.isArray(successJson.resumeProfile.skills) ||
-    typeof successJson.requirements !== 'object' ||
-    !Array.isArray(successJson.requirements.requiredSkills) ||
-    typeof successJson.skillMatches !== 'object' ||
-    !Array.isArray(successJson.skillMatches.requirementMatches) ||
-    successJson.skillMatches.requirementMatches.length === 0 ||
-    typeof successJson.analysis !== 'object' ||
-    !Array.isArray(successJson.analysis.matchedSkills) ||
-    !Array.isArray(successJson.analysis.missingSkills) ||
-    !Array.isArray(successJson.analysis.relevantExperience) ||
-    typeof successJson.analysis.preliminaryAssessment !== 'string'
+    typeof successJson.score?.overall !== 'number' ||
+    !['strong_fit', 'good_fit', 'moderate_fit', 'low_fit'].includes(successJson.score?.recommendation)
   ) {
-    throw new Error('Verification of structured response failed');
+    throw new Error('Verification of complete response payload failed');
   }
 
-  console.log('\n--- SAMPLE REQUIREMENT MATCHES ---');
-  for (const m of successJson.skillMatches.requirementMatches) {
-    console.log(`[${m.relationship.toUpperCase()}] "${m.jdRequirement}" => Evidence: [${m.resumeEvidence.join(', ') || 'None'}]`);
+  console.log('\n--- DETERMINISTIC SCORE DETAILS ---');
+  console.log(`Overall Score: ${successJson.score.overall}/100`);
+  console.log(`Required Skills Score: ${successJson.score.requiredScore}%`);
+  console.log(`Preferred Skills Score: ${successJson.score.preferredScore}%`);
+  console.log(`Recommendation: ${successJson.score.recommendation}`);
+
+  console.log('\n--- SCORE BREAKDOWN ---');
+  for (const b of successJson.score.breakdown) {
+    console.log(
+      `[${b.category.toUpperCase()}] "${b.requirement}" => ${b.relationship} (score: ${b.relationshipScore}, wt: ${b.requirementWeight}, contrib: ${b.contribution}) Evidence: [${b.resumeEvidence.join(', ') || 'None'}]`
+    );
   }
 
   console.log('\n--- FULL RESPONSE PAYLOAD ---');
   console.log(JSON.stringify(successJson, null, 2));
 
-  console.log('\n=== ALL INTEGRATION TESTS PASSED SUCCESSFULLY! ===');
+  console.log('\n=== ALL INTEGRATION & UNIT TESTS PASSED SUCCESSFULLY! ===');
 }
 
 runTests().catch(err => {

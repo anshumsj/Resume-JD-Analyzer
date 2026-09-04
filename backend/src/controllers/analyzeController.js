@@ -1,4 +1,3 @@
-
 import { extractTextFromPdf } from '../services/resumeService.js';
 import {
   extractResumeProfile,
@@ -6,9 +5,10 @@ import {
   compareResumeToRequirements,
   analyzeResumeJobFit
 } from '../services/aiService.js';
+import { calculateJobFitScore } from '../services/scoringService.js';
 
 /**
- * Controller handling resume-to-job analysis requests with semantic requirement comparison.
+ * Controller handling resume-to-job analysis requests with semantic comparison and deterministic scoring.
  */
 export const analyzeJobFit = async (req, res) => {
   try {
@@ -79,7 +79,10 @@ export const analyzeJobFit = async (req, res) => {
       });
     }
 
-    // 6. Run structured job-fit analysis grounded in structured requirements, profile, and comparisons
+    // 6. Calculate deterministic job-fit score and auditable breakdown
+    const score = calculateJobFitScore(requirements, skillMatches);
+
+    // 7. Run structured qualitative job-fit analysis grounded in all structured contexts
     let analysis;
     try {
       analysis = await analyzeResumeJobFit(
@@ -98,12 +101,13 @@ export const analyzeJobFit = async (req, res) => {
       });
     }
 
-    // 7. Return complete structured response
+    // 8. Return complete response including deterministic score
     return res.status(200).json({
       success: true,
       resumeProfile,
       requirements,
       skillMatches,
+      score,
       analysis
     });
   } catch (error) {
