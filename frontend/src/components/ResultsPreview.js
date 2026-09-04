@@ -13,6 +13,7 @@ import { createBadge } from './Badge.js';
 import { createButton } from './Button.js';
 import { createDivider } from './Divider.js';
 import { createSkillComparison } from './SkillComparison.js';
+import { createLearningRoadmap } from './LearningRoadmap.js';
 
 /**
  * Maps raw backend decision keys to human-readable labels and semantic variants.
@@ -242,32 +243,29 @@ export function createResultsPreview({ data, onReset } = {}) {
   const skillComparison = createSkillComparison({ data });
   container.appendChild(skillComparison);
 
-  // --- 6. Continuation Cue (Priority gaps & learning roadmap) ---
-  const continuation = document.createElement('div');
-  continuation.className = 'results-verdict__continuation';
+  // --- 6. Learning Roadmap & Curated Resources ---
+  const learningRoadmap = createLearningRoadmap({ data });
+  container.appendChild(learningRoadmap);
 
-  const contContent = document.createElement('div');
-  contContent.className = 'results-verdict__continuation-content';
+  // --- 7. Final Action Area ---
+  const finalActions = document.createElement('div');
+  finalActions.className = 'results-final-actions';
 
-  const contTitle = document.createElement('span');
-  contTitle.className = 'results-verdict__continuation-title';
-  contTitle.textContent = 'Next: Learning Roadmap';
+  const finalTitle = document.createElement('span');
+  finalTitle.className = 'results-final-actions__title';
+  finalTitle.textContent = 'Ready to evaluate another role?';
 
-  const contDesc = document.createElement('span');
-  contDesc.className = 'results-verdict__continuation-desc';
-  contDesc.textContent = 'Priority gap analysis and curated learning resources';
+  const finalBackBtn = createButton({
+    text: '← Analyze another role',
+    variant: 'secondary',
+    onClick: () => {
+      if (onReset) onReset();
+    }
+  });
 
-  contContent.appendChild(contTitle);
-  contContent.appendChild(contDesc);
-
-  const contBadge = document.createElement('span');
-  contBadge.className = 'results-verdict__continuation-badge';
-  contBadge.textContent = 'Coming next';
-
-  continuation.appendChild(contContent);
-  continuation.appendChild(contBadge);
-
-  container.appendChild(continuation);
+  finalActions.appendChild(finalTitle);
+  finalActions.appendChild(finalBackBtn);
+  container.appendChild(finalActions);
 
   return container;
 }
