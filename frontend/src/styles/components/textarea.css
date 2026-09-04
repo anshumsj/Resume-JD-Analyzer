@@ -6,61 +6,100 @@
 .textarea-group {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: var(--space-2);
+}
+
+.textarea-header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .textarea-label {
   font-size: var(--text-sm);
   font-weight: var(--font-medium);
   color: var(--color-text);
+  letter-spacing: -0.01em;
+}
+
+.textarea-helper {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  line-height: var(--leading-normal);
 }
 
 .textarea {
   width: 100%;
-  padding: var(--space-3);
-  font-size: var(--text-base);
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-sm);
   font-family: var(--font-family);
   color: var(--color-text);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   transition: border-color var(--transition-fast),
-              box-shadow var(--transition-fast);
+              box-shadow var(--transition-fast),
+              background-color var(--transition-fast);
   resize: vertical;
-  min-height: 120px;
-  line-height: var(--leading-normal);
+  min-height: 180px;
+  line-height: 1.55;
+  box-sizing: border-box;
 }
 
 .textarea::placeholder {
   color: var(--color-text-muted);
 }
 
+.textarea:hover:not(:disabled):not(.textarea--error) {
+  border-color: var(--color-border-strong);
+}
+
 .textarea:focus {
+  outline: none;
   border-color: var(--color-border-focus);
   box-shadow: 0 0 0 3px var(--color-accent-subtle);
 }
 
 .textarea--error {
-  border-color: var(--color-error);
+  border-color: var(--color-danger) !important;
 }
+
 .textarea--error:focus {
-  border-color: var(--color-error);
-  box-shadow: 0 0 0 3px var(--color-error-subtle);
+  border-color: var(--color-danger) !important;
+  box-shadow: 0 0 0 3px var(--color-danger-subtle) !important;
 }
 
 .textarea:disabled {
-  background: var(--color-surface-inset);
+  background: var(--color-surface-subtle);
   color: var(--color-text-muted);
   cursor: not-allowed;
+  resize: none;
+}
+
+.textarea-footer {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  min-height: 20px;
 }
 
 .textarea-error-text {
   font-size: var(--text-xs);
-  color: var(--color-error);
+  color: var(--color-danger);
+  flex: 1;
+  line-height: var(--leading-tight);
 }
 
-.textarea-meta {
+.textarea-counter {
   font-size: var(--text-xs);
   color: var(--color-text-muted);
-  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  margin-left: auto;
+}
+
+.textarea-counter--error {
+  color: var(--color-danger);
+  font-weight: var(--font-medium);
 }

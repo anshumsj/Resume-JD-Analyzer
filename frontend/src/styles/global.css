@@ -17,6 +17,7 @@
 @import './components/divider.css';
 @import './components/progress.css';
 @import './components/spinner.css';
+@import './components/analysis-form.css';
 
 /* ---- App-level layout ---- */
 
@@ -67,6 +68,19 @@ body {
   background: var(--color-accent);
   border-radius: var(--radius-sm);
   flex-shrink: 0;
+}
+
+.app-header__separator {
+  color: var(--color-border);
+  font-size: var(--text-sm);
+  font-weight: var(--font-normal);
+}
+
+.app-header__tagline {
+  font-size: var(--text-xs);
+  font-weight: var(--font-normal);
+  color: var(--color-text-muted);
+  letter-spacing: 0;
 }
 
 .app-header__nav {
