@@ -6,6 +6,7 @@ import {
   analyzeResumeJobFit
 } from '../services/aiService.js';
 import { calculateJobFitScore } from '../services/scoringService.js';
+import { generateCandidateRecommendation } from '../services/recommendationService.js';
 
 /**
  * Controller handling resume-to-job analysis requests with semantic comparison and deterministic scoring.
@@ -82,7 +83,14 @@ export const analyzeJobFit = async (req, res) => {
     // 6. Calculate deterministic job-fit score and auditable breakdown
     const score = calculateJobFitScore(requirements, skillMatches);
 
-    // 7. Run structured qualitative job-fit analysis grounded in all structured contexts
+    // 7. Generate deterministic candidate recommendation & learning roadmap
+    const recommendation = generateCandidateRecommendation({
+      requirements,
+      skillMatches,
+      score
+    });
+
+    // 8. Run structured qualitative job-fit analysis grounded in all structured contexts
     let analysis;
     try {
       analysis = await analyzeResumeJobFit(
@@ -101,13 +109,14 @@ export const analyzeJobFit = async (req, res) => {
       });
     }
 
-    // 8. Return complete response including deterministic score
+    // 9. Return complete response including deterministic score and recommendation
     return res.status(200).json({
       success: true,
       resumeProfile,
       requirements,
       skillMatches,
       score,
+      recommendation,
       analysis
     });
   } catch (error) {

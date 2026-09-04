@@ -2,16 +2,22 @@ import fs from 'fs';
 import {
   calculateJobFitScore,
   RELATIONSHIP_SCORES,
-  REQUIREMENT_WEIGHTS,
-  getRecommendation
+  REQUIREMENT_WEIGHTS
 } from './src/services/scoringService.js';
+import {
+  generateCandidateRecommendation,
+  DECISION_TYPES,
+  RECOMMENDATION_THRESHOLDS,
+  ROADMAP_PRIORITY_MATRIX
+} from './src/services/recommendationService.js';
+import { RecommendationSchema } from './src/utils/recommendationSchema.js';
 
 const BASE_URL = 'http://localhost:8000';
 
 async function runTests() {
-  console.log('=== PART A: DETERMINISTIC SCORING UNIT TESTS ===');
+  console.log('=== PART A: M8 DETERMINISTIC SCORING UNIT TESTS ===');
 
-  // Unit Test 1: all direct
+  // M8 Unit Test 1: all direct
   const ut1 = calculateJobFitScore(
     { requiredSkills: ['Node.js', 'Express.js'], preferredSkills: [] },
     { requirementMatches: [
@@ -19,12 +25,12 @@ async function runTests() {
       { jdRequirement: 'Express.js', relationship: 'direct', resumeEvidence: ['Express.js'] }
     ]}
   );
-  console.log(`Unit Test 1 (All Direct): overall = ${ut1.overall} (expected 100), recommendation = ${ut1.recommendation}`);
+  console.log(`M8 Unit Test 1 (All Direct): overall = ${ut1.overall} (expected 100), recommendation = ${ut1.recommendation}`);
   if (ut1.overall !== 100 || ut1.recommendation !== 'strong_fit') {
-    throw new Error(`Unit Test 1 failed: expected 100 strong_fit, got ${ut1.overall} ${ut1.recommendation}`);
+    throw new Error(`M8 Unit Test 1 failed: expected 100 strong_fit, got ${ut1.overall} ${ut1.recommendation}`);
   }
 
-  // Unit Test 2: mixed relationships
+  // M8 Unit Test 2: mixed relationships
   const ut2 = calculateJobFitScore(
     { requiredSkills: ['Node.js', 'PostgreSQL', 'Kubernetes'], preferredSkills: [] },
     { requirementMatches: [
@@ -33,12 +39,12 @@ async function runTests() {
       { jdRequirement: 'Kubernetes', relationship: 'missing', resumeEvidence: [] }
     ]}
   );
-  console.log(`Unit Test 2 (Mixed Relationships): overall = ${ut2.overall} (expected 47), recommendation = ${ut2.recommendation}`);
+  console.log(`M8 Unit Test 2 (Mixed Relationships): overall = ${ut2.overall} (expected 47), recommendation = ${ut2.recommendation}`);
   if (ut2.overall !== 47 || ut2.recommendation !== 'low_fit') {
-    throw new Error(`Unit Test 2 failed: expected 47 low_fit, got ${ut2.overall} ${ut2.recommendation}`);
+    throw new Error(`M8 Unit Test 2 failed: expected 47 low_fit, got ${ut2.overall} ${ut2.recommendation}`);
   }
 
-  // Unit Test 3: preferred weighting
+  // M8 Unit Test 3: preferred weighting
   const ut3 = calculateJobFitScore(
     { requiredSkills: ['Node.js'], preferredSkills: ['AWS'] },
     { requirementMatches: [
@@ -46,12 +52,12 @@ async function runTests() {
       { jdRequirement: 'AWS', relationship: 'partial', resumeEvidence: ['AWS S3'] }
     ]}
   );
-  console.log(`Unit Test 3 (Preferred Weighting): overall = ${ut3.overall} (expected 87), required = ${ut3.requiredScore}, preferred = ${ut3.preferredScore}`);
+  console.log(`M8 Unit Test 3 (Preferred Weighting): overall = ${ut3.overall} (expected 87), required = ${ut3.requiredScore}, preferred = ${ut3.preferredScore}`);
   if (ut3.overall !== 87 || ut3.recommendation !== 'strong_fit' || ut3.requiredScore !== 100 || ut3.preferredScore !== 60) {
-    throw new Error(`Unit Test 3 failed: expected 87, 100, 60, got ${ut3.overall}, ${ut3.requiredScore}, ${ut3.preferredScore}`);
+    throw new Error(`M8 Unit Test 3 failed: expected 87, 100, 60, got ${ut3.overall}, ${ut3.requiredScore}, ${ut3.preferredScore}`);
   }
 
-  // Unit Test 4: all missing
+  // M8 Unit Test 4: all missing
   const ut4 = calculateJobFitScore(
     { requiredSkills: ['Node.js', 'Redis'], preferredSkills: ['AWS'] },
     { requirementMatches: [
@@ -60,26 +66,138 @@ async function runTests() {
       { jdRequirement: 'AWS', relationship: 'missing', resumeEvidence: [] }
     ]}
   );
-  console.log(`Unit Test 4 (All Missing): overall = ${ut4.overall} (expected 0), recommendation = ${ut4.recommendation}`);
+  console.log(`M8 Unit Test 4 (All Missing): overall = ${ut4.overall} (expected 0), recommendation = ${ut4.recommendation}`);
   if (ut4.overall !== 0 || ut4.recommendation !== 'low_fit') {
-    throw new Error(`Unit Test 4 failed: expected 0 low_fit, got ${ut4.overall} ${ut4.recommendation}`);
+    throw new Error(`M8 Unit Test 4 failed: expected 0 low_fit, got ${ut4.overall} ${ut4.recommendation}`);
   }
 
-  // Unit Test 5: no preferred skills (safe handling, no NaN, no division by zero)
+  // M8 Unit Test 5: no preferred skills (safe handling, no NaN, no division by zero)
   const ut5 = calculateJobFitScore(
     { requiredSkills: ['Node.js'], preferredSkills: [] },
     { requirementMatches: [
       { jdRequirement: 'Node.js', relationship: 'direct', resumeEvidence: ['Node.js'] }
     ]}
   );
-  console.log(`Unit Test 5 (No Preferred Skills): overall = ${ut5.overall}, preferredScore = ${ut5.preferredScore} (expected null, no NaN)`);
+  console.log(`M8 Unit Test 5 (No Preferred Skills): overall = ${ut5.overall}, preferredScore = ${ut5.preferredScore} (expected null, no NaN)`);
   if (isNaN(ut5.overall) || ut5.preferredScore !== null || ut5.overall !== 100) {
-    throw new Error(`Unit Test 5 failed: got overall ${ut5.overall}, preferredScore ${ut5.preferredScore}`);
+    throw new Error(`M8 Unit Test 5 failed: got overall ${ut5.overall}, preferredScore ${ut5.preferredScore}`);
   }
 
-  console.log('--- ALL UNIT TESTS PASSED ---\n');
+  console.log('--- ALL M8 SCORING UNIT TESTS PASSED ---\n');
 
-  console.log('=== PART B: API INTEGRATION TESTS ===');
+  console.log('=== PART B: M9 CANDIDATE RECOMMENDATION & ROADMAP UNIT TESTS ===');
+
+  // M9 Test 1: Strong candidate (high overall, high required, mostly direct -> apply)
+  const req1 = { requiredSkills: ['Node.js', 'Express.js'], preferredSkills: ['AWS'] };
+  const matches1 = { requirementMatches: [
+    { jdRequirement: 'Node.js', relationship: 'direct', resumeEvidence: ['Node.js'] },
+    { jdRequirement: 'Express.js', relationship: 'direct', resumeEvidence: ['Express.js'] },
+    { jdRequirement: 'AWS', relationship: 'direct', resumeEvidence: ['AWS'] }
+  ]};
+  const score1 = calculateJobFitScore(req1, matches1);
+  const rec1 = generateCandidateRecommendation({ requirements: req1, skillMatches: matches1, score: score1 });
+  console.log(`M9 Test 1 (Strong Candidate): decision = "${rec1.decision}" (expected "apply")`);
+  if (rec1.decision !== 'apply' || rec1.strengths.length !== 3 || rec1.learningRoadmap.length !== 0) {
+    throw new Error(`M9 Test 1 failed: expected apply with 3 strengths and 0 roadmap items, got ${JSON.stringify(rec1)}`);
+  }
+
+  // M9 Test 2: Good candidate with gaps (reasonable score, some gaps -> apply_with_gaps)
+  const req2 = { requiredSkills: ['Node.js', 'PostgreSQL'], preferredSkills: ['Kubernetes'] };
+  const matches2 = { requirementMatches: [
+    { jdRequirement: 'Node.js', relationship: 'direct', resumeEvidence: ['Node.js'] },
+    { jdRequirement: 'PostgreSQL', relationship: 'related', resumeEvidence: ['MySQL'] },
+    { jdRequirement: 'Kubernetes', relationship: 'missing', resumeEvidence: [] }
+  ]};
+  const score2 = calculateJobFitScore(req2, matches2);
+  const rec2 = generateCandidateRecommendation({ requirements: req2, skillMatches: matches2, score: score2 });
+  console.log(`M9 Test 2 (Good with Gaps): decision = "${rec2.decision}" (expected "apply_with_gaps"), gaps = ${rec2.priorityGaps.length}`);
+  if (rec2.decision !== 'apply_with_gaps' || rec2.priorityGaps.length !== 2) {
+    throw new Error(`M9 Test 2 failed: expected apply_with_gaps with 2 gaps, got ${JSON.stringify(rec2)}`);
+  }
+  // Check gap ordering: required gap (PostgreSQL) must come before preferred gap (Kubernetes)
+  if (rec2.priorityGaps[0].skill !== 'PostgreSQL' || rec2.priorityGaps[1].skill !== 'Kubernetes') {
+    throw new Error(`M9 Test 2 failed: required gaps must be prioritized before preferred gaps`);
+  }
+
+  // M9 Test 3: Weak candidate (low overall & required score -> low_fit)
+  const req3 = { requiredSkills: ['Node.js', 'PostgreSQL', 'Docker'], preferredSkills: ['Kubernetes'] };
+  const matches3 = { requirementMatches: [
+    { jdRequirement: 'Node.js', relationship: 'missing', resumeEvidence: [] },
+    { jdRequirement: 'PostgreSQL', relationship: 'missing', resumeEvidence: [] },
+    { jdRequirement: 'Docker', relationship: 'partial', resumeEvidence: ['Docker overview'] },
+    { jdRequirement: 'Kubernetes', relationship: 'missing', resumeEvidence: [] }
+  ]};
+  const score3 = calculateJobFitScore(req3, matches3);
+  const rec3 = generateCandidateRecommendation({ requirements: req3, skillMatches: matches3, score: score3 });
+  console.log(`M9 Test 3 (Weak Candidate): decision = "${rec3.decision}" (expected "low_fit")`);
+  if (rec3.decision !== 'low_fit') {
+    throw new Error(`M9 Test 3 failed: expected low_fit, got ${rec3.decision}`);
+  }
+
+  // M9 Test 4: Related skill (PostgreSQL -> MySQL, related -> gap with transferable evidence, NOT completely absent)
+  const req4 = { requiredSkills: ['PostgreSQL'], preferredSkills: [] };
+  const matches4 = { requirementMatches: [
+    { jdRequirement: 'PostgreSQL', relationship: 'related', resumeEvidence: ['MySQL'] }
+  ]};
+  const rec4 = generateCandidateRecommendation({ requirements: req4, skillMatches: matches4 });
+  console.log(`M9 Test 4 (Related Skill): relationship = ${rec4.priorityGaps[0]?.relationship}, reason = "${rec4.learningRoadmap[0]?.reason}"`);
+  if (
+    rec4.priorityGaps[0]?.relationship !== 'related' ||
+    !rec4.priorityGaps[0]?.resumeEvidence.includes('MySQL') ||
+    !rec4.learningRoadmap[0]?.reason.includes('transferable') ||
+    rec4.learningRoadmap[0]?.priority !== 'medium'
+  ) {
+    throw new Error(`M9 Test 4 failed: related skill not handled as transferable gap: ${JSON.stringify(rec4)}`);
+  }
+
+  // M9 Test 5: Direct conceptual match (relational database systems -> MySQL/SQL, direct -> strength, NOT in roadmap)
+  const req5 = { requiredSkills: ['relational database systems'], preferredSkills: [] };
+  const matches5 = { requirementMatches: [
+    { jdRequirement: 'relational database systems', relationship: 'direct', resumeEvidence: ['MySQL', 'SQL'] }
+  ]};
+  const rec5 = generateCandidateRecommendation({ requirements: req5, skillMatches: matches5 });
+  console.log(`M9 Test 5 (Direct Conceptual Match): strengths = [${rec5.strengths}], roadmap count = ${rec5.learningRoadmap.length}`);
+  if (!rec5.strengths.includes('relational database systems') || rec5.learningRoadmap.length !== 0) {
+    throw new Error(`M9 Test 5 failed: conceptual direct match should be strength and not appear in roadmap`);
+  }
+
+  // M9 Test 6: No gaps (all direct matches -> verify learningRoadmap is empty)
+  const req6 = { requiredSkills: ['Node.js', 'Docker'], preferredSkills: ['Redis'] };
+  const matches6 = { requirementMatches: [
+    { jdRequirement: 'Node.js', relationship: 'direct', resumeEvidence: ['Node.js'] },
+    { jdRequirement: 'Docker', relationship: 'direct', resumeEvidence: ['Docker'] },
+    { jdRequirement: 'Redis', relationship: 'direct', resumeEvidence: ['Redis'] }
+  ]};
+  const rec6 = generateCandidateRecommendation({ requirements: req6, skillMatches: matches6 });
+  console.log(`M9 Test 6 (No Gaps): learningRoadmap length = ${rec6.learningRoadmap.length} (expected 0)`);
+  if (rec6.learningRoadmap.length !== 0 || rec6.priorityGaps.length !== 0 || rec6.decision !== 'apply') {
+    throw new Error(`M9 Test 6 failed: all direct matches should result in empty roadmap and apply`);
+  }
+
+  // M9 Test 7: No preferred skills (verify recommendation still works, no undefined/NaN errors)
+  const req7 = { requiredSkills: ['Node.js'], preferredSkills: [] };
+  const matches7 = { requirementMatches: [
+    { jdRequirement: 'Node.js', relationship: 'direct', resumeEvidence: ['Node.js'] }
+  ]};
+  const score7 = calculateJobFitScore(req7, matches7);
+  const rec7 = generateCandidateRecommendation({ requirements: req7, skillMatches: matches7, score: score7 });
+  console.log(`M9 Test 7 (No Preferred Skills): decision = ${rec7.decision}, preferredScore = ${score7.preferredScore}`);
+  if (rec7.decision !== 'apply' || typeof rec7.reason !== 'string' || !Array.isArray(rec7.strengths)) {
+    throw new Error(`M9 Test 7 failed: safe execution with no preferred skills failed`);
+  }
+
+  // M9 Test 8: Deterministic behavior (same input produces exactly the same recommendation)
+  const rec8a = generateCandidateRecommendation({ requirements: req2, skillMatches: matches2, score: score2 });
+  const rec8b = generateCandidateRecommendation({ requirements: req2, skillMatches: matches2, score: score2 });
+  const isIdentical = JSON.stringify(rec8a) === JSON.stringify(rec8b);
+  console.log(`M9 Test 8 (Determinism & Idempotence): identical outputs = ${isIdentical}`);
+  if (!isIdentical) {
+    throw new Error(`M9 Test 8 failed: non-deterministic output detected`);
+  }
+
+  console.log('--- ALL M9 RECOMMENDATION & ROADMAP UNIT TESTS PASSED ---\n');
+
+  console.log('=== PART C: API INTEGRATION TESTS ===');
 
   console.log('\n=== TEST 1: Health Check ===');
   const healthRes = await fetch(`${BASE_URL}/api/health`);
@@ -187,36 +305,19 @@ Responsibilities:
 
   // Deterministic Score checks
   console.log('score is object:', typeof successJson.score === 'object' && successJson.score !== null);
-  console.log('score.overall is number (0-100):', typeof successJson.score?.overall === 'number' && successJson.score.overall >= 0 && successJson.score.overall <= 100);
-  console.log('score.requiredScore is number:', typeof successJson.score?.requiredScore === 'number');
-  console.log('score.preferredScore is number or null:', typeof successJson.score?.preferredScore === 'number' || successJson.score?.preferredScore === null);
-  console.log('score.recommendation is valid:', ['strong_fit', 'good_fit', 'moderate_fit', 'low_fit'].includes(successJson.score?.recommendation));
-  console.log('score.breakdown is non-empty Array:', Array.isArray(successJson.score?.breakdown) && successJson.score.breakdown.length > 0);
+  console.log('score.overall is number (0-100):', typeof successJson.score?.overall === 'number');
 
-  // Validate breakdown item structure
-  for (const b of successJson.score?.breakdown || []) {
-    if (!b.requirement || typeof b.requirement !== 'string') {
-      throw new Error(`Invalid breakdown requirement: ${JSON.stringify(b)}`);
-    }
-    if (!['required', 'preferred'].includes(b.category)) {
-      throw new Error(`Invalid breakdown category: ${JSON.stringify(b)}`);
-    }
-    if (!['direct', 'related', 'partial', 'missing'].includes(b.relationship)) {
-      throw new Error(`Invalid breakdown relationship: ${JSON.stringify(b)}`);
-    }
-    if (typeof b.relationshipScore !== 'number') {
-      throw new Error(`Invalid breakdown relationshipScore: ${JSON.stringify(b)}`);
-    }
-    if (typeof b.requirementWeight !== 'number') {
-      throw new Error(`Invalid breakdown requirementWeight: ${JSON.stringify(b)}`);
-    }
-    if (typeof b.contribution !== 'number') {
-      throw new Error(`Invalid breakdown contribution: ${JSON.stringify(b)}`);
-    }
-    if (!Array.isArray(b.resumeEvidence)) {
-      throw new Error(`Invalid breakdown resumeEvidence: ${JSON.stringify(b)}`);
-    }
-  }
+  // Deterministic Recommendation checks
+  console.log('recommendation is object:', typeof successJson.recommendation === 'object' && successJson.recommendation !== null);
+  console.log('recommendation.decision is valid:', ['apply', 'apply_with_gaps', 'low_fit'].includes(successJson.recommendation?.decision));
+  console.log('recommendation.reason is string:', typeof successJson.recommendation?.reason === 'string');
+  console.log('recommendation.strengths is non-empty Array:', Array.isArray(successJson.recommendation?.strengths) && successJson.recommendation.strengths.length > 0);
+  console.log('recommendation.priorityGaps is Array:', Array.isArray(successJson.recommendation?.priorityGaps));
+  console.log('recommendation.learningRoadmap is Array:', Array.isArray(successJson.recommendation?.learningRoadmap));
+
+  // Validate recommendation structure with Zod schema
+  RecommendationSchema.parse(successJson.recommendation);
+  console.log('Recommendation matches Zod schema: true');
 
   // Analysis checks
   console.log('analysis is object:', typeof successJson.analysis === 'object' && successJson.analysis !== null);
@@ -226,23 +327,25 @@ Responsibilities:
   if (
     resSuccess.status !== 200 ||
     successJson.success !== true ||
-    typeof successJson.score?.overall !== 'number' ||
-    !['strong_fit', 'good_fit', 'moderate_fit', 'low_fit'].includes(successJson.score?.recommendation)
+    !['apply', 'apply_with_gaps', 'low_fit'].includes(successJson.recommendation?.decision)
   ) {
     throw new Error('Verification of complete response payload failed');
   }
 
-  console.log('\n--- DETERMINISTIC SCORE DETAILS ---');
-  console.log(`Overall Score: ${successJson.score.overall}/100`);
-  console.log(`Required Skills Score: ${successJson.score.requiredScore}%`);
-  console.log(`Preferred Skills Score: ${successJson.score.preferredScore}%`);
-  console.log(`Recommendation: ${successJson.score.recommendation}`);
+  console.log('\n--- RECOMMENDATION & ROADMAP DETAILS ---');
+  console.log(`Decision: ${successJson.recommendation.decision}`);
+  console.log(`Reason: ${successJson.recommendation.reason}`);
+  console.log(`Strengths (${successJson.recommendation.strengths.length}):`, successJson.recommendation.strengths);
 
-  console.log('\n--- SCORE BREAKDOWN ---');
-  for (const b of successJson.score.breakdown) {
-    console.log(
-      `[${b.category.toUpperCase()}] "${b.requirement}" => ${b.relationship} (score: ${b.relationshipScore}, wt: ${b.requirementWeight}, contrib: ${b.contribution}) Evidence: [${b.resumeEvidence.join(', ') || 'None'}]`
-    );
+  console.log('\nPriority Gaps:');
+  for (const gap of successJson.recommendation.priorityGaps) {
+    console.log(`- [${gap.category.toUpperCase()} | ${gap.relationship}] ${gap.skill} (evidence: [${gap.resumeEvidence.join(', ') || 'None'}])`);
+  }
+
+  console.log('\nLearning Roadmap:');
+  for (const item of successJson.recommendation.learningRoadmap) {
+    console.log(`- [PRIORITY: ${item.priority.toUpperCase()} | ${item.category}] ${item.skill}`);
+    console.log(`  Reason: ${item.reason}`);
   }
 
   console.log('\n--- FULL RESPONSE PAYLOAD ---');
