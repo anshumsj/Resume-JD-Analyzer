@@ -95,6 +95,13 @@ Responsibilities:
   console.log('\n--- VERIFYING STRUCTURED OUTPUT ---');
   console.log('success === true:', successJson.success === true);
 
+  // Resume Profile checks
+  console.log('resumeProfile is object:', typeof successJson.resumeProfile === 'object' && successJson.resumeProfile !== null);
+  console.log('resumeProfile.skills is Array:', Array.isArray(successJson.resumeProfile?.skills));
+  console.log('resumeProfile.experience is Array:', Array.isArray(successJson.resumeProfile?.experience));
+  console.log('resumeProfile.projects is Array:', Array.isArray(successJson.resumeProfile?.projects));
+  console.log('resumeProfile.education is Array:', Array.isArray(successJson.resumeProfile?.education));
+
   // Requirements checks
   console.log('requirements is object:', typeof successJson.requirements === 'object' && successJson.requirements !== null);
   console.log('requirements.jobTitle is string:', typeof successJson.requirements?.jobTitle === 'string');
@@ -112,6 +119,11 @@ Responsibilities:
   if (
     resSuccess.status !== 200 ||
     successJson.success !== true ||
+    typeof successJson.resumeProfile !== 'object' ||
+    !Array.isArray(successJson.resumeProfile.skills) ||
+    !Array.isArray(successJson.resumeProfile.experience) ||
+    !Array.isArray(successJson.resumeProfile.projects) ||
+    !Array.isArray(successJson.resumeProfile.education) ||
     typeof successJson.requirements !== 'object' ||
     typeof successJson.requirements.jobTitle !== 'string' ||
     !Array.isArray(successJson.requirements.requiredSkills) ||
@@ -123,14 +135,15 @@ Responsibilities:
     !Array.isArray(successJson.analysis.relevantExperience) ||
     typeof successJson.analysis.preliminaryAssessment !== 'string'
   ) {
-    throw new Error('Verification of structured requirements and analysis failed');
+    throw new Error('Verification of structured resume profile, requirements, and analysis failed');
   }
 
-  // Check grounding of requirements
-  const reqSkillsLower = successJson.requirements.requiredSkills.map(s => s.toLowerCase());
-  console.log('\nGrounded required skills extracted:', successJson.requirements.requiredSkills);
-  console.log('Grounded preferred skills extracted:', successJson.requirements.preferredSkills);
-  console.log('Grounded responsibilities extracted:', successJson.requirements.responsibilities);
+  console.log('\n--- GROUNDING CHECK ---');
+  console.log('Extracted Resume Skills count:', successJson.resumeProfile.skills.length);
+  console.log('Extracted Resume Skills:', successJson.resumeProfile.skills);
+  console.log('Extracted Resume Experience count:', successJson.resumeProfile.experience.length);
+  console.log('Extracted Resume Projects count:', successJson.resumeProfile.projects.length);
+  console.log('Extracted Resume Education:', successJson.resumeProfile.education);
 
   console.log('\n--- FULL RESPONSE PAYLOAD ---');
   console.log(JSON.stringify(successJson, null, 2));

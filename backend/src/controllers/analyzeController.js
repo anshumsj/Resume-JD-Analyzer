@@ -1,5 +1,9 @@
 import { extractTextFromPdf } from '../services/resumeService.js';
-import { extractJobRequirements, analyzeResumeJobFit } from '../services/aiService.js';
+import {
+  extractResumeProfile,
+  extractJobRequirements,
+  analyzeResumeJobFit
+} from '../services/aiService.js';
 
 /**
  * Controller handling resume-to-job analysis requests.
@@ -43,7 +47,20 @@ export const analyzeJobFit = async (req, res) => {
       });
     }
 
-    // 4. Extract structured JD requirements using LLM + Zod
+    // 4. Extract structured resume profile using LLM + Zod
+    let resumeProfile;
+    try {
+      resumeProfile = await extractResumeProfile(resumeText);
+    } catch (profileError) {
+      const rawMsg = profileError?.message || 'Failed to extract structured resume profile';
+      const sanitizedMsg = rawMsg.replace(/gsk_[a-zA-Z0-9_-]+/g, '[REDACTED_API_KEY]');
+      return res.status(500).json({
+        success: false,
+        error: sanitizedMsg
+      });
+    }
+
+    // 5. Extract structured JD requirements using LLM + Zod
     let requirements;
     try {
       requirements = await extractJobRequirements(trimmedJd);
@@ -56,10 +73,10 @@ export const analyzeJobFit = async (req, res) => {
       });
     }
 
-    // 5. Run structured job-fit analysis with extracted requirements as additional context
+    // 6. Run structured job-fit analysis with extracted resume profile & JD requirements as context
     let analysis;
     try {
-      analysis = await analyzeResumeJobFit(resumeText, trimmedJd, requirements);
+      analysis = await analyzeResumeJobFit(resumeText, trimmedJd, requirements, resumeProfile);
     } catch (aiError) {
       const rawMsg = aiError?.message || 'Failed to analyze resume against job description';
       const sanitizedMsg = rawMsg.replace(/gsk_[a-zA-Z0-9_-]+/g, '[REDACTED_API_KEY]');
@@ -69,9 +86,10 @@ export const analyzeJobFit = async (req, res) => {
       });
     }
 
-    // 6. Return successful structured response
+    // 7. Return successful structured response
     return res.status(200).json({
       success: true,
+      resumeProfile,
       requirements,
       analysis
     });
