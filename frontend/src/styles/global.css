@@ -18,6 +18,7 @@
 @import './components/progress.css';
 @import './components/spinner.css';
 @import './components/analysis-form.css';
+@import './components/results-verdict.css';
 
 /* ---- App-level layout ---- */
 
