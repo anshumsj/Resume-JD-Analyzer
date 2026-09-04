@@ -45,5 +45,9 @@ export const JobFitAnnotation = Annotation.Root({
   learningResources: Annotation({
     reducer: (x, y) => (y !== undefined ? y : x ?? []),
     default: () => []
+  }),
+  analysis: Annotation({
+    reducer: (x, y) => (y !== undefined ? y : x ?? null),
+    default: () => null
   })
 });

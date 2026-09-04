@@ -1,16 +1,8 @@
 import { extractTextFromPdf } from '../services/resumeService.js';
-import {
-  extractResumeProfile,
-  extractJobRequirements,
-  compareResumeToRequirements,
-  analyzeResumeJobFit
-} from '../services/aiService.js';
-import { calculateJobFitScore } from '../services/scoringService.js';
-import { generateCandidateRecommendation } from '../services/recommendationService.js';
-import { enrichLearningRoadmap } from '../services/webSearchService.js';
+import { runJobFitGraph } from '../graph/jobFitGraph.js';
 
 /**
- * Controller handling resume-to-job analysis requests with semantic comparison and deterministic scoring.
+ * Controller handling resume-to-job analysis requests via LangGraph orchestration.
  */
 export const analyzeJobFit = async (req, res) => {
   try {
@@ -51,16 +43,12 @@ export const analyzeJobFit = async (req, res) => {
       });
     }
 
-    // 4. Extract structured resume profile & structured JD requirements concurrently
-    let resumeProfile;
-    let requirements;
+    // 4. Orchestrate end-to-end analysis via LangGraph agent
+    let graphResult;
     try {
-      [resumeProfile, requirements] = await Promise.all([
-        extractResumeProfile(resumeText),
-        extractJobRequirements(trimmedJd)
-      ]);
-    } catch (extractionError) {
-      const rawMsg = extractionError?.message || 'Failed to extract structured profile or requirements';
+      graphResult = await runJobFitGraph(resumeText, trimmedJd);
+    } catch (graphError) {
+      const rawMsg = graphError?.message || 'Failed to execute job fit analysis workflow';
       const sanitizedMsg = rawMsg.replace(/gsk_[a-zA-Z0-9_-]+/g, '[REDACTED_API_KEY]');
       return res.status(500).json({
         success: false,
@@ -68,67 +56,16 @@ export const analyzeJobFit = async (req, res) => {
       });
     }
 
-    // 5. Perform semantic requirement comparison
-    let skillMatches;
-    try {
-      skillMatches = await compareResumeToRequirements(resumeProfile, requirements, resumeText);
-    } catch (comparisonError) {
-      const rawMsg = comparisonError?.message || 'Failed to perform semantic requirement comparison';
-      const sanitizedMsg = rawMsg.replace(/gsk_[a-zA-Z0-9_-]+/g, '[REDACTED_API_KEY]');
-      return res.status(500).json({
-        success: false,
-        error: sanitizedMsg
-      });
-    }
-
-    // 6. Calculate deterministic job-fit score and auditable breakdown
-    const score = calculateJobFitScore(requirements, skillMatches);
-
-    // 7. Generate deterministic candidate recommendation & learning roadmap
-    const recommendation = generateCandidateRecommendation({
-      requirements,
-      skillMatches,
-      score
-    });
-
-    // 8. Enrich learning roadmap with external authoritative learning resources
-    let learningResources = [];
-    try {
-      learningResources = await enrichLearningRoadmap(recommendation?.learningRoadmap || []);
-    } catch (searchError) {
-      // Graceful degradation: search failure does not fail the analysis request
-      learningResources = [];
-    }
-
-    // 9. Run structured qualitative job-fit analysis grounded in all structured contexts
-    let analysis;
-    try {
-      analysis = await analyzeResumeJobFit(
-        resumeText,
-        trimmedJd,
-        requirements,
-        resumeProfile,
-        skillMatches
-      );
-    } catch (aiError) {
-      const rawMsg = aiError?.message || 'Failed to analyze resume against job description';
-      const sanitizedMsg = rawMsg.replace(/gsk_[a-zA-Z0-9_-]+/g, '[REDACTED_API_KEY]');
-      return res.status(500).json({
-        success: false,
-        error: sanitizedMsg
-      });
-    }
-
-    // 10. Return complete response including deterministic score, recommendation, and learning resources
+    // 5. Return domain response adhering to existing API contract
     return res.status(200).json({
       success: true,
-      resumeProfile,
-      requirements,
-      skillMatches,
-      score,
-      recommendation,
-      learningResources,
-      analysis
+      resumeProfile: graphResult.resumeProfile,
+      requirements: graphResult.requirements,
+      skillMatches: graphResult.skillMatches,
+      score: graphResult.score,
+      recommendation: graphResult.recommendation,
+      learningResources: graphResult.learningResources,
+      analysis: graphResult.analysis
     });
   } catch (error) {
     const rawMsg = error?.message || 'An unexpected error occurred during analysis';

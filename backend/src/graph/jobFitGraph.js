@@ -16,7 +16,8 @@ import { JobFitAnnotation } from './jobFitState.js';
 import {
   extractResumeProfile,
   extractJobRequirements,
-  compareResumeToRequirements
+  compareResumeToRequirements,
+  analyzeResumeJobFit
 } from '../services/aiService.js';
 import { calculateJobFitScore } from '../services/scoringService.js';
 import { generateCandidateRecommendation } from '../services/recommendationService.js';
@@ -55,6 +56,7 @@ export const compareNode = async (state) => {
   const resumeProfile = state.resumeProfile || {};
   const requirements = state.requirements || {};
   const resumeText = state.resumeText || '';
+  const jobDescription = state.jobDescription || '';
 
   const skillMatches = await compareResumeToRequirements(
     resumeProfile,
@@ -62,8 +64,24 @@ export const compareNode = async (state) => {
     resumeText
   );
 
+  let analysis = null;
+  try {
+    analysis = await analyzeResumeJobFit(
+      resumeText,
+      jobDescription,
+      requirements,
+      resumeProfile,
+      skillMatches
+    );
+  } catch (err) {
+    const rawMsg = err?.message || 'Failed to analyze qualitative job fit';
+    const sanitizedMsg = rawMsg.replace(/gsk_[a-zA-Z0-9_-]+/g, '[REDACTED_API_KEY]');
+    console.error('Job-fit qualitative analysis error in graph:', sanitizedMsg);
+  }
+
   return {
-    skillMatches
+    skillMatches,
+    analysis
   };
 };
 
@@ -163,6 +181,17 @@ export const jobFitGraph = buildJobFitGraph();
 /**
  * Helper function to invoke the compiled graph with resume text and job description.
  */
-export const runJobFitGraph = async ({ resumeText, jobDescription }) => {
+export const runJobFitGraph = async (resumeTextOrParams, maybeJobDescription) => {
+  let resumeText;
+  let jobDescription;
+
+  if (typeof resumeTextOrParams === 'object' && resumeTextOrParams !== null) {
+    resumeText = resumeTextOrParams.resumeText;
+    jobDescription = resumeTextOrParams.jobDescription;
+  } else {
+    resumeText = resumeTextOrParams;
+    jobDescription = maybeJobDescription;
+  }
+
   return await jobFitGraph.invoke({ resumeText, jobDescription });
 };

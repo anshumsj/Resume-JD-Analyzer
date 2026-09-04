@@ -1,4 +1,5 @@
 import fs from 'fs';
+import { StateGraph, START, END } from '@langchain/langgraph';
 import {
   calculateJobFitScore,
   RELATIONSHIP_SCORES,
@@ -14,6 +15,14 @@ import {
   enrichLearningRoadmap,
   searchLearningResources
 } from './src/services/webSearchService.js';
+import {
+  shouldEnrichResources,
+  NODE_NAMES,
+  scoreNode,
+  recommendationNode,
+  resourceNode
+} from './src/graph/jobFitGraph.js';
+import { JobFitAnnotation } from './src/graph/jobFitState.js';
 import { RecommendationSchema } from './src/utils/recommendationSchema.js';
 
 const BASE_URL = 'http://localhost:8000';
@@ -301,46 +310,47 @@ async function runTests() {
 
   console.log('--- ALL M10 WEB SEARCH UNIT TESTS PASSED ---\n');
 
-  console.log('=== PART D: API INTEGRATION TESTS ===');
+  console.log('=== PART D: MILESTONE 12 API INTEGRATION TESTS ===');
 
-  console.log('\n=== TEST 1: Health Check ===');
+  console.log('\n--- M12 TEST 1: Health Check & Input Validation Errors ---');
+  // Health check
   const healthRes = await fetch(`${BASE_URL}/api/health`);
-  console.log('Status:', healthRes.status);
+  console.log('Health Status:', healthRes.status);
   const healthData = await healthRes.json();
-  console.log('Body:', healthData);
   if (healthRes.status !== 200 || healthData.status !== 'ok') {
     throw new Error('Health check failed');
   }
+  console.log('Health check passed');
 
-  console.log('\n=== TEST 2: Analyze - Missing Resume File ===');
+  // Missing Resume File -> 400
   const fdNoResume = new FormData();
   fdNoResume.append('jobDescription', 'We are looking for a Node.js engineer.');
   const resNoResume = await fetch(`${BASE_URL}/api/analyze`, {
     method: 'POST',
     body: fdNoResume
   });
-  console.log('Status:', resNoResume.status);
+  console.log('Missing resume status:', resNoResume.status);
   const noResumeData = await resNoResume.json();
-  console.log('Body:', noResumeData);
   if (resNoResume.status !== 400 || noResumeData.success !== false) {
     throw new Error('Missing resume test failed');
   }
+  console.log('Missing resume test passed (400)');
 
-  console.log('\n=== TEST 3: Analyze - Missing Job Description ===');
+  // Missing Job Description -> 400
   const fdNoJd = new FormData();
   fdNoJd.append('resume', new Blob([fs.readFileSync('Resume.pdf.pdf')], { type: 'application/pdf' }), 'Resume.pdf.pdf');
   const resNoJd = await fetch(`${BASE_URL}/api/analyze`, {
     method: 'POST',
     body: fdNoJd
   });
-  console.log('Status:', resNoJd.status);
+  console.log('Missing JD status:', resNoJd.status);
   const noJdData = await resNoJd.json();
-  console.log('Body:', noJdData);
   if (resNoJd.status !== 400 || noJdData.success !== false) {
     throw new Error('Missing jobDescription test failed');
   }
+  console.log('Missing jobDescription test passed (400)');
 
-  console.log('\n=== TEST 4: Analyze - Invalid File Type (Non-PDF) ===');
+  // Invalid File Type (Non-PDF) -> 400
   const fdInvalid = new FormData();
   fdInvalid.append('resume', new Blob(['Not a PDF file content'], { type: 'text/plain' }), 'resume.txt');
   fdInvalid.append('jobDescription', 'We need a backend developer.');
@@ -348,14 +358,14 @@ async function runTests() {
     method: 'POST',
     body: fdInvalid
   });
-  console.log('Status:', resInvalid.status);
+  console.log('Invalid file status:', resInvalid.status);
   const invalidData = await resInvalid.json();
-  console.log('Body:', invalidData);
   if (resInvalid.status !== 400 || invalidData.success !== false) {
     throw new Error('Invalid file type test failed');
   }
+  console.log('Invalid file type test passed (400)');
 
-  console.log('\n=== TEST 5: Analyze - Real Resume + Realistic SDE Job Description ===');
+  console.log('\n--- M12 TEST 2 & 3: End-to-End LangGraph Orchestration via /api/analyze ---');
   const sdeJobDescription = `Job Title: Backend Software Engineer
 
 Requirements:
@@ -382,7 +392,7 @@ Responsibilities:
   fdSuccess.append('resume', new Blob([fs.readFileSync('Resume.pdf.pdf')], { type: 'application/pdf' }), 'Resume.pdf.pdf');
   fdSuccess.append('jobDescription', sdeJobDescription);
 
-  console.log('Sending request to /api/analyze...');
+  console.log('Sending request to /api/analyze orchestrated via LangGraph...');
   const startTime = Date.now();
   const resSuccess = await fetch(`${BASE_URL}/api/analyze`, {
     method: 'POST',
@@ -392,26 +402,42 @@ Responsibilities:
   console.log(`Status: ${resSuccess.status} (completed in ${duration}s)`);
   const successJson = await resSuccess.json();
 
-  console.log('\n--- VERIFYING COMPLETE RESPONSE STRUCTURE ---');
+  console.log('\n--- VERIFYING COMPLETE RESPONSE CONTRACT (ALL 7 FIELDS) ---');
   console.log('success === true:', successJson.success === true);
+  if (resSuccess.status !== 200 || successJson.success !== true) {
+    throw new Error(`Endpoint returned status ${resSuccess.status} instead of 200: ${JSON.stringify(successJson)}`);
+  }
 
-  // Resume Profile checks
+  // 1. Resume Profile
   console.log('resumeProfile is object:', typeof successJson.resumeProfile === 'object' && successJson.resumeProfile !== null);
   console.log('resumeProfile.skills is Array:', Array.isArray(successJson.resumeProfile?.skills));
+  if (!successJson.resumeProfile || !Array.isArray(successJson.resumeProfile.skills)) {
+    throw new Error('Field resumeProfile invalid');
+  }
 
-  // Requirements checks
+  // 2. Requirements
   console.log('requirements is object:', typeof successJson.requirements === 'object' && successJson.requirements !== null);
   console.log('requirements.requiredSkills is Array:', Array.isArray(successJson.requirements?.requiredSkills));
+  if (!successJson.requirements || !Array.isArray(successJson.requirements.requiredSkills)) {
+    throw new Error('Field requirements invalid');
+  }
 
-  // SkillMatches checks
+  // 3. SkillMatches
   console.log('skillMatches is object:', typeof successJson.skillMatches === 'object' && successJson.skillMatches !== null);
   console.log('skillMatches.requirementMatches is Array:', Array.isArray(successJson.skillMatches?.requirementMatches));
+  if (!successJson.skillMatches || !Array.isArray(successJson.skillMatches.requirementMatches)) {
+    throw new Error('Field skillMatches invalid');
+  }
 
-  // Deterministic Score checks
+  // 4. Deterministic Score (Test 3 value checks)
   console.log('score is object:', typeof successJson.score === 'object' && successJson.score !== null);
-  console.log('score.overall is number (0-100):', typeof successJson.score?.overall === 'number');
+  console.log('score.overall is number (0-100):', typeof successJson.score?.overall === 'number' && successJson.score.overall >= 0 && successJson.score.overall <= 100);
+  console.log('score.breakdown is Array:', Array.isArray(successJson.score?.breakdown));
+  if (typeof successJson.score?.overall !== 'number' || !Array.isArray(successJson.score?.breakdown)) {
+    throw new Error('Field score invalid');
+  }
 
-  // Deterministic Recommendation checks
+  // 5. Deterministic Recommendation (Test 3 value checks)
   console.log('recommendation is object:', typeof successJson.recommendation === 'object' && successJson.recommendation !== null);
   console.log('recommendation.decision is valid:', ['apply', 'apply_with_gaps', 'low_fit'].includes(successJson.recommendation?.decision));
   console.log('recommendation.reason is string:', typeof successJson.recommendation?.reason === 'string');
@@ -423,36 +449,95 @@ Responsibilities:
   RecommendationSchema.parse(successJson.recommendation);
   console.log('Recommendation matches Zod schema: true');
 
-  // M10 Learning Resources checks
-  console.log('learningResources is Array:', Array.isArray(successJson.learningResources));
-  console.log(`learningResources count: ${successJson.learningResources.length}`);
-  for (const lr of successJson.learningResources) {
-    if (!lr.skill || typeof lr.skill !== 'string') {
-      throw new Error(`Invalid learningResource skill: ${JSON.stringify(lr)}`);
-    }
-    if (!Array.isArray(lr.resources)) {
-      throw new Error(`Invalid learningResource resources: ${JSON.stringify(lr)}`);
-    }
-    for (const resItem of lr.resources) {
-      if (!resItem.title || !resItem.url || !resItem.source) {
-        throw new Error(`Invalid learningResource item: ${JSON.stringify(resItem)}`);
-      }
-    }
-  }
-
-  // Analysis checks
+  // 6. Analysis
   console.log('analysis is object:', typeof successJson.analysis === 'object' && successJson.analysis !== null);
   console.log('analysis.matchedSkills is Array:', Array.isArray(successJson.analysis?.matchedSkills));
   console.log('analysis.preliminaryAssessment is string:', typeof successJson.analysis?.preliminaryAssessment === 'string');
-
-  if (
-    resSuccess.status !== 200 ||
-    successJson.success !== true ||
-    !['apply', 'apply_with_gaps', 'low_fit'].includes(successJson.recommendation?.decision) ||
-    !Array.isArray(successJson.learningResources)
-  ) {
-    throw new Error('Verification of complete response payload failed');
+  if (!successJson.analysis || !Array.isArray(successJson.analysis.matchedSkills)) {
+    throw new Error('Field analysis invalid');
   }
+
+  // M12 Test 4: Candidate with roadmap gaps produces enriched learningResources
+  console.log('\n--- M12 TEST 4: Candidate With Roadmap Gaps Produces Enriched Resources ---');
+  console.log('learningResources is Array:', Array.isArray(successJson.learningResources));
+  console.log(`Roadmap count: ${successJson.recommendation.learningRoadmap.length}, learningResources count: ${successJson.learningResources.length}`);
+  if (successJson.recommendation.learningRoadmap.length > 0) {
+    if (!Array.isArray(successJson.learningResources) || successJson.learningResources.length === 0) {
+      throw new Error('M12 Test 4 failed: candidate with roadmap gaps must have enriched learningResources');
+    }
+    for (const lr of successJson.learningResources) {
+      if (!lr.skill || typeof lr.skill !== 'string') {
+        throw new Error(`Invalid learningResource skill: ${JSON.stringify(lr)}`);
+      }
+      if (!Array.isArray(lr.resources) || lr.resources.length === 0) {
+        throw new Error(`Invalid learningResource resources: ${JSON.stringify(lr)}`);
+      }
+      for (const resItem of lr.resources) {
+        if (!resItem.title || !resItem.url || !resItem.source) {
+          throw new Error(`Invalid learningResource item: ${JSON.stringify(resItem)}`);
+        }
+      }
+    }
+    console.log('M12 Test 4 PASSED: Enriched learning resources successfully produced for roadmap gaps');
+  }
+
+  // M12 Test 5: Candidate with no gaps (Conditional routing bypasses resource enrichment)
+  console.log('\n--- M12 TEST 5: Candidate With No Gaps (Bypasses Resource Enrichment) ---');
+  // 5a: Test routing condition directly
+  const routeEmpty = shouldEnrichResources({ recommendation: { learningRoadmap: [] } });
+  if (routeEmpty !== END) {
+    throw new Error(`M12 Test 5 failed: empty roadmap should route to ${END}, got ${routeEmpty}`);
+  }
+  // 5b: Run graph execution where candidate matches all requirements directly
+  let toolCalled = false;
+  const directMatchGraph = new StateGraph(JobFitAnnotation)
+    .addNode(NODE_NAMES.EXTRACT, async () => ({
+      resumeProfile: { skills: ['Node.js', 'Express.js'] },
+      requirements: { requiredSkills: ['Node.js', 'Express.js'], preferredSkills: [] }
+    }))
+    .addNode(NODE_NAMES.COMPARE, async () => ({
+      skillMatches: {
+        requirementMatches: [
+          { jdRequirement: 'Node.js', relationship: 'direct', resumeEvidence: ['Node.js'] },
+          { jdRequirement: 'Express.js', relationship: 'direct', resumeEvidence: ['Express.js'] }
+        ]
+      }
+    }))
+    .addNode(NODE_NAMES.SCORE, scoreNode)
+    .addNode(NODE_NAMES.RECOMMENDATION, recommendationNode)
+    .addNode(NODE_NAMES.RESOURCE, async (state) => {
+      toolCalled = true;
+      return await resourceNode(state);
+    })
+    .addEdge(START, NODE_NAMES.EXTRACT)
+    .addEdge(NODE_NAMES.EXTRACT, NODE_NAMES.COMPARE)
+    .addEdge(NODE_NAMES.COMPARE, NODE_NAMES.SCORE)
+    .addEdge(NODE_NAMES.SCORE, NODE_NAMES.RECOMMENDATION)
+    .addConditionalEdges(NODE_NAMES.RECOMMENDATION, shouldEnrichResources)
+    .addEdge(NODE_NAMES.RESOURCE, END)
+    .compile();
+
+  const directMatchResult = await directMatchGraph.invoke({
+    resumeText: 'Node.js Express.js engineer',
+    jobDescription: 'Requirements: Node.js, Express.js'
+  });
+
+  if (toolCalled !== false) {
+    throw new Error('M12 Test 5 failed: resource_enrichment node was called when roadmap was empty');
+  }
+  if (!Array.isArray(directMatchResult.learningResources) || directMatchResult.learningResources.length !== 0) {
+    throw new Error('M12 Test 5 failed: learningResources should be empty array when bypassed');
+  }
+  console.log('M12 Test 5 PASSED: Resource enrichment correctly bypassed when roadmap is empty');
+
+  // M12 Test 6: Verify Isolation (Web search results isolated from score & recommendation)
+  console.log('\n--- M12 TEST 6: Verify Isolation ---');
+  const scoreStr = JSON.stringify(successJson.score);
+  const recStr = JSON.stringify(successJson.recommendation);
+  if (scoreStr.includes('http://') || scoreStr.includes('https://') || recStr.includes('http://') || recStr.includes('https://')) {
+    throw new Error('M12 Test 6 failed: URLs found inside score or recommendation');
+  }
+  console.log('M12 Test 6 PASSED: Scoring and recommendation remain strictly isolated from web search enrichment');
 
   console.log('\n--- RECOMMENDATION & ROADMAP DETAILS ---');
   console.log(`Decision: ${successJson.recommendation.decision}`);
@@ -478,9 +563,6 @@ Responsibilities:
       console.log(`    URL: ${r.url} (source: ${r.source})`);
     }
   }
-
-  console.log('\n--- FULL RESPONSE PAYLOAD ---');
-  console.log(JSON.stringify(successJson, null, 2));
 
   console.log('\n=== ALL INTEGRATION & UNIT TESTS PASSED SUCCESSFULLY! ===');
 }
