@@ -49,18 +49,18 @@
 }
 
 .badge--related {
-  background: var(--color-accent-subtle);
-  color: var(--color-accent);
-}
-
-.badge--partial {
   background: var(--color-warning-subtle);
   color: var(--color-warning);
 }
 
+.badge--partial {
+  background: var(--color-partial-subtle);
+  color: var(--color-partial);
+}
+
 .badge--missing {
-  background: var(--color-error-subtle);
-  color: var(--color-error);
+  background: var(--color-danger-subtle);
+  color: var(--color-danger);
 }
 
 /* --- Dot indicator --- */

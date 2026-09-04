@@ -12,6 +12,7 @@ import { createProgressBar } from './ProgressBar.js';
 import { createBadge } from './Badge.js';
 import { createButton } from './Button.js';
 import { createDivider } from './Divider.js';
+import { createSkillComparison } from './SkillComparison.js';
 
 /**
  * Maps raw backend decision keys to human-readable labels and semantic variants.
@@ -237,7 +238,11 @@ export function createResultsPreview({ data, onReset } = {}) {
 
   container.appendChild(strengthsSection);
 
-  // --- 5. Continuation Cue (Detailed analysis placeholder) ---
+  // --- 5. Skill-by-Skill Comparison Section ---
+  const skillComparison = createSkillComparison({ data });
+  container.appendChild(skillComparison);
+
+  // --- 6. Continuation Cue (Priority gaps & learning roadmap) ---
   const continuation = document.createElement('div');
   continuation.className = 'results-verdict__continuation';
 
@@ -246,11 +251,11 @@ export function createResultsPreview({ data, onReset } = {}) {
 
   const contTitle = document.createElement('span');
   contTitle.className = 'results-verdict__continuation-title';
-  contTitle.textContent = 'Detailed analysis';
+  contTitle.textContent = 'Next: Learning Roadmap';
 
   const contDesc = document.createElement('span');
   contDesc.className = 'results-verdict__continuation-desc';
-  contDesc.textContent = 'Skill-by-skill comparison, gaps and learning roadmap';
+  contDesc.textContent = 'Priority gap analysis and curated learning resources';
 
   contContent.appendChild(contTitle);
   contContent.appendChild(contDesc);

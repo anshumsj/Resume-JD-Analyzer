@@ -32,6 +32,8 @@
   --color-error-subtle:    #fee2e2;
   --color-danger:          #dc2626;
   --color-danger-subtle:   #fee2e2;
+  --color-partial:         #7c3aed;
+  --color-partial-subtle:  #f3e8ff;
 
   /* ---- Spacing (4px base) ---- */
   --space-1:   4px;

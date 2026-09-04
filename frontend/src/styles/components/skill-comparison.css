@@ -1,0 +1,173 @@
+/* ==========================================================================
+   Skill Comparison — Requirement-by-Requirement Semantic Matching (M13-D)
+   ========================================================================== */
+
+.skill-comparison {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-7);
+  width: 100%;
+}
+
+/* Section Header */
+.skill-comparison__header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.skill-comparison__title {
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  color: var(--color-text);
+  letter-spacing: -0.02em;
+}
+
+.skill-comparison__subtitle {
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+  line-height: var(--leading-normal);
+}
+
+/* Group: Required vs Preferred */
+.skill-comparison__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.skill-comparison__group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: var(--space-1);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.skill-comparison__group-title {
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  color: var(--color-text);
+  letter-spacing: -0.01em;
+}
+
+.skill-comparison__group-count {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Items List */
+.skill-comparison__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* Individual Comparison Card */
+.skill-comparison__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2-5);
+  padding: var(--space-4) var(--space-5);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+  transition: border-color var(--transition-fast);
+}
+
+.skill-comparison__card:hover {
+  border-color: var(--color-border-strong);
+}
+
+/* Card Header (Requirement Name + Relationship Badge) */
+.skill-comparison__card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.skill-comparison__req-name {
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  color: var(--color-text);
+  letter-spacing: -0.01em;
+  word-break: break-word;
+}
+
+/* Resume Evidence Block */
+.skill-comparison__evidence-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.skill-comparison__evidence-label {
+  font-size: 11px;
+  font-weight: var(--font-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+}
+
+.skill-comparison__evidence-content {
+  font-size: var(--text-xs);
+  color: var(--color-text);
+  line-height: var(--leading-normal);
+}
+
+.skill-comparison__evidence-empty {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+/* Contextual Nuance Line (for related and partial matches) */
+.skill-comparison__nuance {
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+  line-height: var(--leading-normal);
+  padding-top: var(--space-1);
+  border-top: 1px solid var(--color-border);
+}
+
+/* Empty State */
+.skill-comparison__empty {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-5);
+  background: var(--color-surface);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  text-align: center;
+}
+
+.skill-comparison__empty-title {
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--color-text);
+}
+
+.skill-comparison__empty-desc {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+/* Responsive adjustments */
+@media (max-width: 640px) {
+  .skill-comparison {
+    gap: var(--space-6);
+  }
+
+  .skill-comparison__card {
+    padding: var(--space-3-5) var(--space-4);
+    gap: var(--space-2);
+  }
+
+  .skill-comparison__card-header {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+}
