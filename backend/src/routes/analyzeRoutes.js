@@ -1,9 +1,10 @@
 import express from 'express';
 import { uploadResumeMiddleware } from '../utils/multerConfig.js';
-import { extractResume } from '../controllers/resumeController.js';
+import { analyzeJobFit } from '../controllers/analyzeController.js';
 
 const router = express.Router();
 
-router.post('/extract', uploadResumeMiddleware, extractResume);
+// POST /api/analyze
+router.post('/', uploadResumeMiddleware, analyzeJobFit);
 
 export default router;

@@ -2,9 +2,11 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import resumeRoutes from './src/routes/resumeRoutes.js';
+import analyzeRoutes from './src/routes/analyzeRoutes.js';
 
 // Configure dotenv
 dotenv.config();
+dotenv.config({ path: '../.env' });
 
 const app = express();
 
@@ -22,6 +24,9 @@ app.get('/api/health', (req, res) => {
 
 // Resume API routes
 app.use('/api/resume', resumeRoutes);
+
+// Job Analysis API routes
+app.use('/api/analyze', analyzeRoutes);
 
 const PORT = process.env.PORT || 8000;
 
