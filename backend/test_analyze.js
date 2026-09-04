@@ -61,14 +61,14 @@ async function runTests() {
 Requirements:
 - Node.js
 - Express.js
-- MongoDB or PostgreSQL
+- PostgreSQL
 - Redis
 - Docker
 - Strong understanding of relational database systems
 - Experience building scalable REST APIs
 
 Preferred:
-- AWS
+- AWS cloud architecture
 - Kubernetes
 - Microservices architecture
 
@@ -109,8 +109,38 @@ Responsibilities:
   console.log('requirements.preferredSkills is Array:', Array.isArray(successJson.requirements?.preferredSkills));
   console.log('requirements.responsibilities is Array:', Array.isArray(successJson.requirements?.responsibilities));
 
+  // SkillMatches checks
+  console.log('skillMatches is object:', typeof successJson.skillMatches === 'object' && successJson.skillMatches !== null);
+  console.log('skillMatches.requirementMatches is Array:', Array.isArray(successJson.skillMatches?.requirementMatches));
+
+  // Validate each requirement match
+  const validRelationships = ['direct', 'related', 'partial', 'missing'];
+  let directCount = 0, relatedCount = 0, partialCount = 0, missingCount = 0;
+
+  for (const match of successJson.skillMatches?.requirementMatches || []) {
+    if (!match.jdRequirement || typeof match.jdRequirement !== 'string') {
+      throw new Error(`Invalid match jdRequirement: ${JSON.stringify(match)}`);
+    }
+    if (!Array.isArray(match.resumeEvidence)) {
+      throw new Error(`Invalid match resumeEvidence: ${JSON.stringify(match)}`);
+    }
+    if (!validRelationships.includes(match.relationship)) {
+      throw new Error(`Invalid relationship enum value "${match.relationship}" in: ${JSON.stringify(match)}`);
+    }
+    if (match.relationship === 'direct') directCount++;
+    if (match.relationship === 'related') relatedCount++;
+    if (match.relationship === 'partial') partialCount++;
+    if (match.relationship === 'missing') missingCount++;
+  }
+
+  console.log(`\nSemantic Relationship Breakdown:`);
+  console.log(`- direct: ${directCount}`);
+  console.log(`- related: ${relatedCount}`);
+  console.log(`- partial: ${partialCount}`);
+  console.log(`- missing: ${missingCount}`);
+
   // Analysis checks
-  console.log('analysis is object:', typeof successJson.analysis === 'object' && successJson.analysis !== null);
+  console.log('\nanalysis is object:', typeof successJson.analysis === 'object' && successJson.analysis !== null);
   console.log('analysis.matchedSkills is Array:', Array.isArray(successJson.analysis?.matchedSkills));
   console.log('analysis.missingSkills is Array:', Array.isArray(successJson.analysis?.missingSkills));
   console.log('analysis.relevantExperience is Array:', Array.isArray(successJson.analysis?.relevantExperience));
@@ -121,29 +151,24 @@ Responsibilities:
     successJson.success !== true ||
     typeof successJson.resumeProfile !== 'object' ||
     !Array.isArray(successJson.resumeProfile.skills) ||
-    !Array.isArray(successJson.resumeProfile.experience) ||
-    !Array.isArray(successJson.resumeProfile.projects) ||
-    !Array.isArray(successJson.resumeProfile.education) ||
     typeof successJson.requirements !== 'object' ||
-    typeof successJson.requirements.jobTitle !== 'string' ||
     !Array.isArray(successJson.requirements.requiredSkills) ||
-    !Array.isArray(successJson.requirements.preferredSkills) ||
-    !Array.isArray(successJson.requirements.responsibilities) ||
+    typeof successJson.skillMatches !== 'object' ||
+    !Array.isArray(successJson.skillMatches.requirementMatches) ||
+    successJson.skillMatches.requirementMatches.length === 0 ||
     typeof successJson.analysis !== 'object' ||
     !Array.isArray(successJson.analysis.matchedSkills) ||
     !Array.isArray(successJson.analysis.missingSkills) ||
     !Array.isArray(successJson.analysis.relevantExperience) ||
     typeof successJson.analysis.preliminaryAssessment !== 'string'
   ) {
-    throw new Error('Verification of structured resume profile, requirements, and analysis failed');
+    throw new Error('Verification of structured response failed');
   }
 
-  console.log('\n--- GROUNDING CHECK ---');
-  console.log('Extracted Resume Skills count:', successJson.resumeProfile.skills.length);
-  console.log('Extracted Resume Skills:', successJson.resumeProfile.skills);
-  console.log('Extracted Resume Experience count:', successJson.resumeProfile.experience.length);
-  console.log('Extracted Resume Projects count:', successJson.resumeProfile.projects.length);
-  console.log('Extracted Resume Education:', successJson.resumeProfile.education);
+  console.log('\n--- SAMPLE REQUIREMENT MATCHES ---');
+  for (const m of successJson.skillMatches.requirementMatches) {
+    console.log(`[${m.relationship.toUpperCase()}] "${m.jdRequirement}" => Evidence: [${m.resumeEvidence.join(', ') || 'None'}]`);
+  }
 
   console.log('\n--- FULL RESPONSE PAYLOAD ---');
   console.log(JSON.stringify(successJson, null, 2));

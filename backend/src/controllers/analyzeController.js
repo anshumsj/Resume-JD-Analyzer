@@ -1,12 +1,14 @@
+
 import { extractTextFromPdf } from '../services/resumeService.js';
 import {
   extractResumeProfile,
   extractJobRequirements,
+  compareResumeToRequirements,
   analyzeResumeJobFit
 } from '../services/aiService.js';
 
 /**
- * Controller handling resume-to-job analysis requests.
+ * Controller handling resume-to-job analysis requests with semantic requirement comparison.
  */
 export const analyzeJobFit = async (req, res) => {
   try {
@@ -47,25 +49,16 @@ export const analyzeJobFit = async (req, res) => {
       });
     }
 
-    // 4. Extract structured resume profile using LLM + Zod
+    // 4. Extract structured resume profile & structured JD requirements concurrently
     let resumeProfile;
-    try {
-      resumeProfile = await extractResumeProfile(resumeText);
-    } catch (profileError) {
-      const rawMsg = profileError?.message || 'Failed to extract structured resume profile';
-      const sanitizedMsg = rawMsg.replace(/gsk_[a-zA-Z0-9_-]+/g, '[REDACTED_API_KEY]');
-      return res.status(500).json({
-        success: false,
-        error: sanitizedMsg
-      });
-    }
-
-    // 5. Extract structured JD requirements using LLM + Zod
     let requirements;
     try {
-      requirements = await extractJobRequirements(trimmedJd);
-    } catch (reqError) {
-      const rawMsg = reqError?.message || 'Failed to extract job requirements';
+      [resumeProfile, requirements] = await Promise.all([
+        extractResumeProfile(resumeText),
+        extractJobRequirements(trimmedJd)
+      ]);
+    } catch (extractionError) {
+      const rawMsg = extractionError?.message || 'Failed to extract structured profile or requirements';
       const sanitizedMsg = rawMsg.replace(/gsk_[a-zA-Z0-9_-]+/g, '[REDACTED_API_KEY]');
       return res.status(500).json({
         success: false,
@@ -73,10 +66,29 @@ export const analyzeJobFit = async (req, res) => {
       });
     }
 
-    // 6. Run structured job-fit analysis with extracted resume profile & JD requirements as context
+    // 5. Perform semantic requirement comparison
+    let skillMatches;
+    try {
+      skillMatches = await compareResumeToRequirements(resumeProfile, requirements, resumeText);
+    } catch (comparisonError) {
+      const rawMsg = comparisonError?.message || 'Failed to perform semantic requirement comparison';
+      const sanitizedMsg = rawMsg.replace(/gsk_[a-zA-Z0-9_-]+/g, '[REDACTED_API_KEY]');
+      return res.status(500).json({
+        success: false,
+        error: sanitizedMsg
+      });
+    }
+
+    // 6. Run structured job-fit analysis grounded in structured requirements, profile, and comparisons
     let analysis;
     try {
-      analysis = await analyzeResumeJobFit(resumeText, trimmedJd, requirements, resumeProfile);
+      analysis = await analyzeResumeJobFit(
+        resumeText,
+        trimmedJd,
+        requirements,
+        resumeProfile,
+        skillMatches
+      );
     } catch (aiError) {
       const rawMsg = aiError?.message || 'Failed to analyze resume against job description';
       const sanitizedMsg = rawMsg.replace(/gsk_[a-zA-Z0-9_-]+/g, '[REDACTED_API_KEY]');
@@ -86,11 +98,12 @@ export const analyzeJobFit = async (req, res) => {
       });
     }
 
-    // 7. Return successful structured response
+    // 7. Return complete structured response
     return res.status(200).json({
       success: true,
       resumeProfile,
       requirements,
+      skillMatches,
       analysis
     });
   } catch (error) {
