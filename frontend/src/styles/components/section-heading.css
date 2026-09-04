@@ -1,0 +1,23 @@
+/* ==========================================================================
+   Section Heading
+   ========================================================================== */
+
+.section-heading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.section-heading__title {
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  color: var(--color-text);
+  line-height: var(--leading-tight);
+  letter-spacing: -0.01em;
+}
+
+.section-heading__description {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  line-height: var(--leading-normal);
+}

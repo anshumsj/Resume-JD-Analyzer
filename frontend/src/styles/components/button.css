@@ -1,0 +1,107 @@
+/* ==========================================================================
+   Button
+   Variants: primary, secondary, ghost
+   States: default, hover, focus, disabled, loading
+   ========================================================================== */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  line-height: 1;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  transition: background var(--transition-fast),
+              border-color var(--transition-fast),
+              color var(--transition-fast),
+              box-shadow var(--transition-fast);
+  white-space: nowrap;
+  min-height: 36px;
+  cursor: pointer;
+  user-select: none;
+  position: relative;
+}
+
+/* Primary */
+.btn--primary {
+  background: var(--color-accent);
+  color: var(--color-accent-text);
+  border-color: var(--color-accent);
+}
+.btn--primary:hover:not(:disabled) {
+  background: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
+}
+
+/* Secondary */
+.btn--secondary {
+  background: var(--color-surface);
+  color: var(--color-text);
+  border-color: var(--color-border);
+}
+.btn--secondary:hover:not(:disabled) {
+  background: var(--color-surface-inset);
+  border-color: var(--color-border-strong);
+}
+
+/* Ghost */
+.btn--ghost {
+  background: transparent;
+  color: var(--color-text-secondary);
+}
+.btn--ghost:hover:not(:disabled) {
+  background: var(--color-surface-inset);
+  color: var(--color-text);
+}
+
+/* Focus */
+.btn:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+
+/* Disabled */
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Loading */
+.btn--loading {
+  color: transparent;
+  pointer-events: none;
+}
+.btn--loading::after {
+  content: '';
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: var(--radius-full);
+  animation: btn-spin 0.6s linear infinite;
+}
+.btn--primary.btn--loading::after {
+  border-color: var(--color-accent-text);
+  border-right-color: transparent;
+}
+.btn--secondary.btn--loading::after,
+.btn--ghost.btn--loading::after {
+  border-color: var(--color-text-muted);
+  border-right-color: transparent;
+}
+
+@keyframes btn-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Size: small */
+.btn--sm {
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-xs);
+  min-height: 28px;
+}

@@ -1,0 +1,79 @@
+/* ==========================================================================
+   Typography — Inter font + type scale
+   ========================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+body {
+  font-family: var(--font-family);
+  font-size: var(--text-base);
+  font-weight: var(--font-regular);
+  color: var(--color-text);
+  line-height: var(--leading-normal);
+}
+
+/* --- Type scale classes --- */
+
+.text-page-title {
+  font-size: var(--text-2xl);
+  font-weight: var(--font-bold);
+  line-height: var(--leading-tight);
+  color: var(--color-text);
+  letter-spacing: -0.02em;
+}
+
+.text-section-heading {
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  line-height: var(--leading-tight);
+  color: var(--color-text);
+  letter-spacing: -0.01em;
+}
+
+.text-subsection-heading {
+  font-size: var(--text-md);
+  font-weight: var(--font-semibold);
+  line-height: var(--leading-tight);
+  color: var(--color-text);
+}
+
+.text-body {
+  font-size: var(--text-base);
+  font-weight: var(--font-regular);
+  line-height: var(--leading-normal);
+  color: var(--color-text);
+}
+
+.text-secondary {
+  font-size: var(--text-base);
+  font-weight: var(--font-regular);
+  line-height: var(--leading-normal);
+  color: var(--color-text-secondary);
+}
+
+.text-label {
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  line-height: var(--leading-tight);
+  color: var(--color-text);
+}
+
+.text-meta {
+  font-size: var(--text-xs);
+  font-weight: var(--font-regular);
+  line-height: var(--leading-normal);
+  color: var(--color-text-muted);
+}
+
+.text-data {
+  font-size: var(--text-base);
+  font-weight: var(--font-semibold);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--leading-tight);
+  color: var(--color-text);
+}
+
+.text-mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
