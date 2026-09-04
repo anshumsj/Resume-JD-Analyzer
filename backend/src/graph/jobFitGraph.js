@@ -120,6 +120,25 @@ export const resourceNode = async (state) => {
 };
 
 /**
+ * Conditional routing function:
+ * Checks if recommendation has non-empty learning roadmap items.
+ * If yes, routes to resource_enrichment node; otherwise routes directly to END.
+ *
+ * @param {Object} state - Current graph state
+ * @returns {string} Target node name or END
+ */
+export const shouldEnrichResources = (state) => {
+  if (
+    state?.recommendation &&
+    Array.isArray(state.recommendation.learningRoadmap) &&
+    state.recommendation.learningRoadmap.length > 0
+  ) {
+    return NODE_NAMES.RESOURCE;
+  }
+  return END;
+};
+
+/**
  * Compiles and returns the executable LangGraph state workflow.
  */
 export const buildJobFitGraph = () => {
@@ -133,7 +152,7 @@ export const buildJobFitGraph = () => {
     .addEdge(NODE_NAMES.EXTRACT, NODE_NAMES.COMPARE)
     .addEdge(NODE_NAMES.COMPARE, NODE_NAMES.SCORE)
     .addEdge(NODE_NAMES.SCORE, NODE_NAMES.RECOMMENDATION)
-    .addEdge(NODE_NAMES.RECOMMENDATION, NODE_NAMES.RESOURCE)
+    .addConditionalEdges(NODE_NAMES.RECOMMENDATION, shouldEnrichResources)
     .addEdge(NODE_NAMES.RESOURCE, END);
 
   return workflow.compile();

@@ -1,5 +1,6 @@
 import fs from 'fs';
 import dotenv from 'dotenv';
+import { END, START, StateGraph } from '@langchain/langgraph';
 
 // Load environment variables
 dotenv.config();
@@ -10,35 +11,100 @@ import {
   jobFitGraph,
   runJobFitGraph,
   NODE_NAMES,
-  buildJobFitGraph
+  buildJobFitGraph,
+  shouldEnrichResources,
+  scoreNode,
+  recommendationNode,
+  resourceNode
 } from './src/graph/jobFitGraph.js';
+import { JobFitAnnotation } from './src/graph/jobFitState.js';
 
 async function runGraphTests() {
-  console.log('=== MILESTONE 11-A: LANGGRAPH ORCHESTRATION TESTS ===\n');
+  console.log('=== MILESTONE 11-B: CONDITIONAL LANGGRAPH ROUTING TESTS ===\n');
 
-  // Test 1: Verify graph compilation & structure
-  console.log('--- TEST 1: Graph Compilation & Node Structure ---');
-  if (!jobFitGraph) {
-    throw new Error('Graph failed to compile or is undefined');
+  // TEST 1 — Roadmap Exists
+  console.log('--- TEST 1: Roadmap Exists ---');
+  const stateWithGaps = {
+    recommendation: {
+      learningRoadmap: [
+        {
+          skill: 'PostgreSQL',
+          priority: 'medium',
+          category: 'required',
+          reason: 'PostgreSQL is required by the job description.'
+        }
+      ]
+    }
+  };
+  const route1 = shouldEnrichResources(stateWithGaps);
+  console.log(`Route for roadmap with 1 item: "${route1}" (expected "${NODE_NAMES.RESOURCE}")`);
+  if (route1 !== NODE_NAMES.RESOURCE) {
+    throw new Error(`Test 1 failed: expected ${NODE_NAMES.RESOURCE}, got ${route1}`);
   }
-  console.log('Graph compiled successfully.');
-  console.log('Registered node names:', Object.values(NODE_NAMES));
+  console.log('TEST 1 PASSED');
 
-  // Test 2: Unit test with controlled/mock inputs to verify node sequence & state updates
-  console.log('\n--- TEST 2: Node Sequence & State Transformation Test ---');
-  const customWorkflow = buildJobFitGraph();
-  if (typeof customWorkflow.invoke !== 'function') {
-    throw new Error('Compiled workflow does not have an invoke method');
+  // TEST 2 — Empty Roadmap
+  console.log('\n--- TEST 2: Empty Roadmap ---');
+  const stateEmptyRoadmap = {
+    recommendation: {
+      learningRoadmap: []
+    }
+  };
+  const route2 = shouldEnrichResources(stateEmptyRoadmap);
+  console.log(`Route for empty roadmap: "${route2}" (expected "${END}")`);
+  if (route2 !== END) {
+    throw new Error(`Test 2 failed: expected ${END}, got ${route2}`);
   }
-  console.log('buildJobFitGraph produces a valid executable Runnable.');
+  console.log('TEST 2 PASSED');
 
-  // Test 3: End-to-end execution with real Resume PDF text + realistic SDE JD
-  console.log('\n--- TEST 3: End-to-End Execution with Real Resume PDF ---');
+  // TEST 3 — Missing Recommendation
+  console.log('\n--- TEST 3: Missing / Null Recommendation ---');
+  const stateNoRec1 = { recommendation: null };
+  const stateNoRec2 = {};
+  const route3a = shouldEnrichResources(stateNoRec1);
+  const route3b = shouldEnrichResources(stateNoRec2);
+  console.log(`Route for null recommendation: "${route3a}", empty state: "${route3b}" (expected "${END}")`);
+  if (route3a !== END || route3b !== END) {
+    throw new Error(`Test 3 failed: expected ${END}, got ${route3a}, ${route3b}`);
+  }
+  console.log('TEST 3 PASSED');
+
+  // TEST 4 — Multiple Roadmap Items
+  console.log('\n--- TEST 4: Multiple Roadmap Items ---');
+  const stateMultiGaps = {
+    recommendation: {
+      learningRoadmap: [
+        { skill: 'PostgreSQL', priority: 'medium', category: 'required' },
+        { skill: 'Kubernetes', priority: 'medium', category: 'preferred' },
+        { skill: 'AWS', priority: 'low', category: 'preferred' }
+      ]
+    }
+  };
+  const route4 = shouldEnrichResources(stateMultiGaps);
+  console.log(`Route for 3 roadmap items: "${route4}" (expected "${NODE_NAMES.RESOURCE}")`);
+  if (route4 !== NODE_NAMES.RESOURCE) {
+    throw new Error(`Test 4 failed: expected ${NODE_NAMES.RESOURCE}, got ${route4}`);
+  }
+  console.log('TEST 4 PASSED');
+
+  // TEST 5 — Determinism
+  console.log('\n--- TEST 5: Determinism ---');
+  for (let i = 0; i < 10; i++) {
+    const rGaps = shouldEnrichResources(stateWithGaps);
+    const rEmpty = shouldEnrichResources(stateEmptyRoadmap);
+    if (rGaps !== NODE_NAMES.RESOURCE || rEmpty !== END) {
+      throw new Error(`Test 5 failed: non-deterministic routing detected at iteration ${i}`);
+    }
+  }
+  console.log('TEST 5 PASSED: 10/10 iterations produced identical routing results');
+
+  // TEST 6 — Full Graph With Gaps (Real Resume + SDE JD)
+  console.log('\n--- TEST 6: Full Graph Execution With Roadmap Gaps ---');
   const pdfBuffer = fs.readFileSync('Resume.pdf.pdf');
   const resumeText = await extractTextFromPdf(pdfBuffer);
   console.log(`Extracted resume text: ${resumeText.length} characters`);
 
-  const jobDescription = `Job Title: Backend Software Engineer
+  const sdeJobDescription = `Job Title: Backend Software Engineer
 
 Requirements:
 - Node.js
@@ -60,58 +126,82 @@ Responsibilities:
 - Optimize database queries and schema designs
 - Collaborate with cross-functional frontend teams`;
 
-  console.log('Invoking runJobFitGraph...');
+  console.log('Invoking runJobFitGraph with real candidate (has gaps in PostgreSQL/Kubernetes)...');
   const startTime = Date.now();
-  const finalState = await runJobFitGraph({ resumeText, jobDescription });
+  const finalState = await runJobFitGraph({ resumeText, jobDescription: sdeJobDescription });
   const duration = ((Date.now() - startTime) / 1000).toFixed(2);
-  console.log(`runJobFitGraph completed in ${duration}s\n`);
+  console.log(`Graph completed in ${duration}s`);
 
-  console.log('--- VERIFYING FINAL SHARED STATE ---');
-  const requiredKeys = [
-    'resumeText',
-    'jobDescription',
-    'resumeProfile',
-    'requirements',
-    'skillMatches',
-    'score',
-    'recommendation',
-    'learningResources'
-  ];
-
-  for (const key of requiredKeys) {
-    const hasKey = key in finalState && finalState[key] !== null && finalState[key] !== undefined;
-    console.log(`state.${key} exists: ${hasKey}`);
-    if (!hasKey) {
-      throw new Error(`Missing expected state property: ${key}`);
-    }
-  }
-
-  // Verify internal structures
-  console.log('\n--- STATE PROPERTY VALIDATION ---');
-  console.log('resumeProfile.skills is Array:', Array.isArray(finalState.resumeProfile?.skills));
-  console.log('requirements.requiredSkills is Array:', Array.isArray(finalState.requirements?.requiredSkills));
-  console.log('skillMatches.requirementMatches is Array:', Array.isArray(finalState.skillMatches?.requirementMatches));
-  console.log('score.overall is Number (0-100):', typeof finalState.score?.overall === 'number');
-  console.log('score.breakdown is non-empty Array:', Array.isArray(finalState.score?.breakdown) && finalState.score.breakdown.length > 0);
-  console.log('recommendation.decision is valid:', ['apply', 'apply_with_gaps', 'low_fit'].includes(finalState.recommendation?.decision));
-  console.log('recommendation.strengths is Array:', Array.isArray(finalState.recommendation?.strengths));
-  console.log('recommendation.priorityGaps is Array:', Array.isArray(finalState.recommendation?.priorityGaps));
-  console.log('recommendation.learningRoadmap is Array:', Array.isArray(finalState.recommendation?.learningRoadmap));
-  console.log('learningResources is Array:', Array.isArray(finalState.learningResources));
-
-  console.log('\n--- ORCHESTRATION PIPELINE SUMMARY ---');
-  console.log(`Candidate Fit Score: ${finalState.score.overall}/100`);
-  console.log(`Recommendation: ${finalState.recommendation.decision}`);
-  console.log(`Reason: ${finalState.recommendation.reason}`);
-  console.log(`Strengths count: ${finalState.recommendation.strengths.length}`);
-  console.log(`Gaps count: ${finalState.recommendation.priorityGaps.length}`);
+  // Verify that candidate had roadmap gaps and resource enrichment executed
   console.log(`Roadmap items count: ${finalState.recommendation.learningRoadmap.length}`);
-  console.log(`Learning resources enriched count: ${finalState.learningResources.length}`);
+  console.log(`Enriched resources count: ${finalState.learningResources.length}`);
+  if (finalState.recommendation.learningRoadmap.length === 0) {
+    throw new Error('Test 6 failed: real candidate was expected to have roadmap gaps');
+  }
+  if (!Array.isArray(finalState.learningResources) || finalState.learningResources.length === 0) {
+    throw new Error('Test 6 failed: resource enrichment should have executed for candidate with gaps');
+  }
+  console.log(`Candidate Fit Score: ${finalState.score.overall}/100, Decision: ${finalState.recommendation.decision}`);
+  console.log('TEST 6 PASSED: Candidate with gaps conditionally routed to resource_enrichment and was enriched');
 
-  console.log('\n=== ALL LANGGRAPH ORCHESTRATION TESTS PASSED SUCCESSFULLY! ===');
+  // TEST 7 — Full Graph With No Gaps (Synthetic State)
+  console.log('\n--- TEST 7: Full Graph With No Gaps (Conditional Routing Skips Tool) ---');
+  let toolExecuted = false;
+
+  // Build a test graph with a spy on the resource enrichment node
+  const noGapGraph = new StateGraph(JobFitAnnotation)
+    .addNode(NODE_NAMES.EXTRACT, async () => ({
+      resumeProfile: { skills: ['Node.js', 'Express.js'] },
+      requirements: { requiredSkills: ['Node.js', 'Express.js'], preferredSkills: [] }
+    }))
+    .addNode(NODE_NAMES.COMPARE, async () => ({
+      skillMatches: {
+        requirementMatches: [
+          { jdRequirement: 'Node.js', relationship: 'direct', resumeEvidence: ['Node.js'] },
+          { jdRequirement: 'Express.js', relationship: 'direct', resumeEvidence: ['Express.js'] }
+        ]
+      }
+    }))
+    .addNode(NODE_NAMES.SCORE, scoreNode)
+    .addNode(NODE_NAMES.RECOMMENDATION, recommendationNode)
+    .addNode(NODE_NAMES.RESOURCE, async (state) => {
+      toolExecuted = true;
+      return await resourceNode(state);
+    })
+    .addEdge(START, NODE_NAMES.EXTRACT)
+    .addEdge(NODE_NAMES.EXTRACT, NODE_NAMES.COMPARE)
+    .addEdge(NODE_NAMES.COMPARE, NODE_NAMES.SCORE)
+    .addEdge(NODE_NAMES.SCORE, NODE_NAMES.RECOMMENDATION)
+    .addConditionalEdges(NODE_NAMES.RECOMMENDATION, shouldEnrichResources)
+    .addEdge(NODE_NAMES.RESOURCE, END)
+    .compile();
+
+  const noGapResult = await noGapGraph.invoke({
+    resumeText: 'Node.js Express.js developer',
+    jobDescription: 'Requirements: Node.js, Express.js'
+  });
+
+  console.log(`No-gap overall score: ${noGapResult.score.overall}`);
+  console.log(`No-gap recommendation decision: ${noGapResult.recommendation.decision}`);
+  console.log(`No-gap learningRoadmap length: ${noGapResult.recommendation.learningRoadmap.length}`);
+  console.log(`No-gap learningResources length: ${noGapResult.learningResources.length}`);
+  console.log(`Tool executed: ${toolExecuted} (expected false)`);
+
+  if (noGapResult.recommendation.learningRoadmap.length !== 0) {
+    throw new Error('Test 7 failed: expected 0 learningRoadmap items for direct matches');
+  }
+  if (toolExecuted !== false) {
+    throw new Error('Test 7 failed: resource_enrichment node was executed when roadmap was empty!');
+  }
+  if (noGapResult.learningResources.length !== 0) {
+    throw new Error('Test 7 failed: learningResources should remain [] when tool is skipped');
+  }
+  console.log('TEST 7 PASSED: Graph conditionally routed to END, skipping resource_enrichment completely');
+
+  console.log('\n=== ALL M11-B CONDITIONAL ROUTING TESTS PASSED SUCCESSFULLY! ===');
 }
 
 runGraphTests().catch((err) => {
-  console.error('\nGraph test failed with error:', err);
+  console.error('\nTest failed with error:', err);
   process.exit(1);
 });
