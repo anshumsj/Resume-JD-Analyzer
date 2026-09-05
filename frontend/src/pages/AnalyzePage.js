@@ -6,6 +6,11 @@
 import { createAnalysisForm } from '../components/AnalysisForm.js';
 import { createResultsPreview } from '../components/ResultsPreview.js';
 import { analyzeResume } from '../utils/api.js';
+import {
+  saveAnalysisResult,
+  loadAnalysisResult,
+  clearAnalysisResult
+} from '../utils/storage.js';
 
 export function createAnalyzePage() {
   const container = document.createElement('div');
@@ -22,6 +27,10 @@ export function createAnalyzePage() {
       try {
         const result = await analyzeResume(file, jobDescription);
         currentResult = result;
+
+        // Persist to localStorage defensively (failure never blocks result display)
+        saveAnalysisResult(result);
+
         showResults(result);
       } catch (err) {
         console.error('Analysis request failed:', err);
@@ -52,6 +61,8 @@ export function createAnalyzePage() {
     const resultsView = createResultsPreview({
       data,
       onReset: () => {
+        // Clear both localStorage and in-memory state
+        clearAnalysisResult();
         currentResult = null;
         showForm();
       }
@@ -59,8 +70,15 @@ export function createAnalyzePage() {
     container.appendChild(resultsView);
   }
 
-  // Initial render: show the form
-  container.appendChild(formComponent.element);
+  // Check for previously persisted analysis result on initialization
+  const savedResult = loadAnalysisResult();
+  if (savedResult) {
+    currentResult = savedResult;
+    showResults(savedResult);
+  } else {
+    // Initial render: show the form
+    showForm();
+  }
 
   return {
     element: container,

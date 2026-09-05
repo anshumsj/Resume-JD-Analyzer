@@ -10,11 +10,11 @@ export const jobRequirementSchema = z.object({
     .describe('The explicit job title from the JD, or a concise role description supported by the JD if no explicit title is stated.'),
   requiredSkills: z
     .array(z.string().min(1))
-    .describe('Technical skills, technologies, frameworks, tools, platforms, or conceptual capabilities explicitly presented as required or essential in the JD.'),
+    .describe('Comprehensive and exhaustive list of ALL technical skills, programming languages, frameworks, libraries, databases, APIs, protocols, architectures, tools, testing methodologies, and core engineering competencies explicitly presented as required, essential, or minimum qualifications in the JD. Extract every distinct requirement without omitting any.'),
   preferredSkills: z
     .array(z.string().min(1))
-    .describe('Skills, technologies, or qualifications explicitly presented as preferred, nice-to-have, bonus, or advantageous in the JD.'),
+    .describe('Comprehensive list of ALL skills, technologies, cloud tools, platforms, or qualifications explicitly presented as preferred, nice-to-have, bonus, plus, or advantageous in the JD. Return empty array [] if none are specified.'),
   responsibilities: z
     .array(z.string().min(1))
-    .describe('Concise descriptions of key responsibilities and duties directly mentioned in the JD.')
+    .describe('Concise descriptions of all key duties, responsibilities, and tasks directly mentioned in the JD.')
 });

@@ -48,11 +48,22 @@ export const analyzeJobFit = async (req, res) => {
     try {
       graphResult = await runJobFitGraph(resumeText, trimmedJd);
     } catch (graphError) {
-      const rawMsg = graphError?.message || 'Failed to execute job fit analysis workflow';
-      const sanitizedMsg = rawMsg.replace(/gsk_[a-zA-Z0-9_-]+/g, '[REDACTED_API_KEY]');
+      console.error('JobFit Graph Execution Error:', graphError);
+
+      const isRateLimit =
+        graphError?.isRateLimit ||
+        graphError?.status === 429 ||
+        /rate limit|rate_limit_exceeded|tpm budget/i.test(graphError?.message || '');
+
+      const userMessage = isRateLimit
+        ? 'The AI analysis service is temporarily busy due to rate limits. Please try again in a few moments.'
+        : (graphError?.message || 'Failed to execute job fit analysis workflow')
+            .replace(/gsk_[a-zA-Z0-9_-]+/g, '[REDACTED_API_KEY]')
+            .replace(/org_[a-zA-Z0-9_-]+/g, '[REDACTED_ORG]');
+
       return res.status(500).json({
         success: false,
-        error: sanitizedMsg
+        error: userMessage
       });
     }
 
@@ -68,11 +79,22 @@ export const analyzeJobFit = async (req, res) => {
       analysis: graphResult.analysis
     });
   } catch (error) {
-    const rawMsg = error?.message || 'An unexpected error occurred during analysis';
-    const sanitizedMsg = rawMsg.replace(/gsk_[a-zA-Z0-9_-]+/g, '[REDACTED_API_KEY]');
+    console.error('Analyze Controller Error:', error);
+
+    const isRateLimit =
+      error?.isRateLimit ||
+      error?.status === 429 ||
+      /rate limit|rate_limit_exceeded|tpm budget/i.test(error?.message || '');
+
+    const userMessage = isRateLimit
+      ? 'The AI analysis service is temporarily busy due to rate limits. Please try again in a few moments.'
+      : (error?.message || 'An unexpected error occurred during analysis')
+          .replace(/gsk_[a-zA-Z0-9_-]+/g, '[REDACTED_API_KEY]')
+          .replace(/org_[a-zA-Z0-9_-]+/g, '[REDACTED_ORG]');
+
     return res.status(500).json({
       success: false,
-      error: sanitizedMsg
+      error: userMessage
     });
   }
 };
