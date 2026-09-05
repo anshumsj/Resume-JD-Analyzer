@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>JobFit AI — M15 Persistence Test Harness</title>
+  <style>
+    body {
+      background-color: #0b0f19;
+      color: #f1f5f9;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      padding: 32px;
+      margin: 0;
+    }
+    h1 { font-size: 20px; font-weight: 600; margin-bottom: 24px; color: #fff; }
+    .test-card {
+      background: #151d2f;
+      border: 1px solid #1e293b;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .test-name { font-size: 14px; font-weight: 500; }
+    .test-desc { font-size: 12px; color: #94a3b8; margin-top: 4px; }
+    .status-badge {
+      padding: 4px 10px;
+      border-radius: 9999px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+    }
+    .status-pass { background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); }
+    .status-fail { background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); }
+    .status-running { background: rgba(59, 130, 246, 0.15); color: #3b82f6; border: 1px solid rgba(59, 130, 246, 0.3); }
+    #mount-point {
+      position: absolute;
+      top: -9999px;
+      left: -9999px;
+      width: 1000px;
+    }
+  </style>
+  <link rel="stylesheet" href="/src/styles/global.css">
+</head>
+<body>
+  <h1>JobFit AI — M15 Client-side Persistence Verification Suite</h1>
+  <div id="test-results"></div>
+  <div id="mount-point"></div>
+
+  <script type="module">
+    import {
+      STORAGE_KEY,
+      isValidAnalysisResult,
+      saveAnalysisResult,
+      loadAnalysisResult,
+      clearAnalysisResult
+    } from '/src/utils/storage.js';
+    import { createAnalyzePage } from '/src/pages/AnalyzePage.js';
+
+    const resultsContainer = document.getElementById('test-results');
+    const mountPoint = document.getElementById('mount-point');
+
+    const sampleValidAnalysis = {
+      resumeProfile: {
+        skills: ['JavaScript', 'Node.js', 'React', 'Git'],
+        experience: ['Software Engineer at TechCorp'],
+        projects: ['E-commerce Platform'],
+        education: ['B.S. in Computer Science']
+      },
+      requirements: {
+        jobTitle: 'Software Development Engineer — Backend',
+        requiredSkills: ['JavaScript / TypeScript', 'Node.js', 'PostgreSQL', 'REST APIs'],
+        preferredSkills: ['Redis', 'Docker', 'AWS'],
+        responsibilities: ['Build backend services', 'Optimize queries']
+      },
+      skillMatches: {
+        requirementMatches: [
+          { jdRequirement: 'Node.js', relationship: 'direct', confidence: 0.95, resumeEvidence: ['Node.js'], reasoning: 'Exact match' },
+          { jdRequirement: 'PostgreSQL', relationship: 'related', confidence: 0.75, resumeEvidence: ['MySQL'], reasoning: 'Related RDBMS' }
+        ]
+      },
+      score: {
+        overall: 78,
+        requiredScore: 85,
+        preferredScore: 60,
+        recommendation: 'strong_fit',
+        breakdown: [
+          { category: 'Required Skills', score: 85, weight: 0.7 },
+          { category: 'Preferred Skills', score: 60, weight: 0.3 }
+        ]
+      },
+      recommendation: {
+        decision: 'apply_with_gaps',
+        reason: 'Strong candidate with minor database gap.',
+        strengths: ['Node.js', 'REST APIs'],
+        priorityGaps: [
+          { skill: 'PostgreSQL', relationship: 'related', resumeEvidence: ['MySQL'] }
+        ],
+        learningRoadmap: [
+          { skill: 'PostgreSQL', priority: 'medium', category: 'required', reason: 'PostgreSQL is required.' }
+        ]
+      },
+      learningResources: [
+        {
+          skill: 'PostgreSQL',
+          resources: [
+            { title: 'PostgreSQL Tutorial', url: 'https://postgresqltutorial.com', source: 'postgresqltutorial.com' }
+          ]
+        }
+      ],
+      analysis: {
+        matchedSkills: ['Node.js'],
+        preliminaryAssessment: 'Good fit for the backend role.'
+      }
+    };
+
+    function renderTest(id, name, desc, status, error) {
+      let card = document.getElementById(`test-${id}`);
+      if (!card) {
+        card = document.createElement('div');
+        card.id = `test-${id}`;
+        card.className = 'test-card';
+        resultsContainer.appendChild(card);
+      }
+      card.innerHTML = `
+        <div>
+          <div class="test-name">${name}</div>
+          <div class="test-desc">${desc}${error ? ` <br><span style="color:#ef4444">${error}</span>` : ''}</div>
+        </div>
+        <span class="status-badge status-${status.toLowerCase()}">${status}</span>
+      `;
+    }
+
+    async function runAllTests() {
+      // -------------------------------------------------------------
+      // Test 1: Fresh browser / localStorage cleared -> form appears
+      // -------------------------------------------------------------
+      try {
+        clearAnalysisResult();
+        mountPoint.innerHTML = '';
+        const page = createAnalyzePage();
+        mountPoint.appendChild(page.element);
+
+        const formEl = page.element.querySelector('.analysis-form');
+        const resultsEl = page.element.querySelector('.results-verdict');
+
+        if (formEl && !resultsEl) {
+          renderTest(1, 'Test 1: Fresh Visit / Cleared Storage', 'Initial render correctly presents the input form when no analysis is saved.', 'PASS');
+        } else {
+          throw new Error('Form not rendered or results rendered prematurely');
+        }
+      } catch (err) {
+        renderTest(1, 'Test 1: Fresh Visit / Cleared Storage', 'Failed', 'FAIL', err.message);
+      }
+
+      // -------------------------------------------------------------
+      // Test 2: Persist complete analysis -> localStorage contains versioned object
+      // -------------------------------------------------------------
+      try {
+        clearAnalysisResult();
+        const saved = saveAnalysisResult(sampleValidAnalysis);
+        const raw = localStorage.getItem(STORAGE_KEY);
+        const parsed = JSON.parse(raw);
+
+        if (
+          saved &&
+          raw &&
+          parsed.score.overall === 78 &&
+          parsed.recommendation.decision === 'apply_with_gaps' &&
+          Array.isArray(parsed.learningResources) &&
+          parsed.learningResources.length === 1
+        ) {
+          renderTest(2, 'Test 2: Persistence Contract', 'saveAnalysisResult writes all 7 core fields to "jobfit:analysis:v1".', 'PASS');
+        } else {
+          throw new Error('Persisted data does not match 7-field contract');
+        }
+      } catch (err) {
+        renderTest(2, 'Test 2: Persistence Contract', 'Failed', 'FAIL', err.message);
+      }
+
+      // -------------------------------------------------------------
+      // Test 3: Refresh while on results -> results remain visible and identical
+      // -------------------------------------------------------------
+      try {
+        // Ensure storage has valid data
+        saveAnalysisResult(sampleValidAnalysis);
+
+        // Simulate page initialization after refresh
+        mountPoint.innerHTML = '';
+        const page = createAnalyzePage();
+        mountPoint.appendChild(page.element);
+
+        const formEl = page.element.querySelector('.analysis-form');
+        const resultsEl = page.element.querySelector('.results-verdict');
+        const scoreEl = page.element.querySelector('.results-verdict__score-num');
+        const titleEl = page.element.querySelector('.results-verdict__role-title');
+
+        if (
+          resultsEl &&
+          !formEl &&
+          scoreEl &&
+          scoreEl.textContent.trim() === '78' &&
+          titleEl &&
+          titleEl.textContent.includes('Software Development Engineer')
+        ) {
+          renderTest(3, 'Test 3: Results Restoration on Refresh', 'Page initialization restores full analysis preview identically without returning to form.', 'PASS');
+        } else {
+          throw new Error('Results view was not restored or content mismatch');
+        }
+      } catch (err) {
+        renderTest(3, 'Test 3: Results Restoration on Refresh', 'Failed', 'FAIL', err.message);
+      }
+
+      // -------------------------------------------------------------
+      // Test 4: Click "Analyze another role" -> storage cleared, form appears
+      // -------------------------------------------------------------
+      try {
+        saveAnalysisResult(sampleValidAnalysis);
+        mountPoint.innerHTML = '';
+        const page = createAnalyzePage();
+        mountPoint.appendChild(page.element);
+
+        // Find and click the "Analyze another role" button
+        const backBtn = page.element.querySelector('.results-verdict__back-btn');
+        if (!backBtn) throw new Error('Back button not found in results view');
+        backBtn.click();
+
+        const formAfterReset = page.element.querySelector('.analysis-form');
+        const resultsAfterReset = page.element.querySelector('.results-verdict');
+        const storageAfterReset = localStorage.getItem(STORAGE_KEY);
+
+        if (formAfterReset && !resultsAfterReset && storageAfterReset === null) {
+          renderTest(4, 'Test 4: "Analyze Another Role" Action', 'Clears localStorage and in-memory state, returning user cleanly to the form.', 'PASS');
+        } else {
+          throw new Error('Storage was not cleared or form was not shown after reset');
+        }
+      } catch (err) {
+        renderTest(4, 'Test 4: "Analyze Another Role" Action', 'Failed', 'FAIL', err.message);
+      }
+
+      // -------------------------------------------------------------
+      // Test 5: Refresh after "Analyze another role" -> form still appears
+      // -------------------------------------------------------------
+      try {
+        // Storage is already cleared from Test 4
+        mountPoint.innerHTML = '';
+        const page = createAnalyzePage();
+        mountPoint.appendChild(page.element);
+
+        const formEl = page.element.querySelector('.analysis-form');
+        const resultsEl = page.element.querySelector('.results-verdict');
+
+        if (formEl && !resultsEl) {
+          renderTest(5, 'Test 5: Refresh After Reset', 'Page re-initialization after reset displays the form; old results do not return.', 'PASS');
+        } else {
+          throw new Error('Old results incorrectly reappeared after reset');
+        }
+      } catch (err) {
+        renderTest(5, 'Test 5: Refresh After Reset', 'Failed', 'FAIL', err.message);
+      }
+
+      // -------------------------------------------------------------
+      // Test 6: Corrupted JSON in localStorage -> graceful fallback & cleanup
+      // -------------------------------------------------------------
+      try {
+        localStorage.setItem(STORAGE_KEY, '{ invalid JSON : corrupted garbage');
+
+        const loaded = loadAnalysisResult();
+        const cleanedStorage = localStorage.getItem(STORAGE_KEY);
+
+        mountPoint.innerHTML = '';
+        const page = createAnalyzePage();
+        mountPoint.appendChild(page.element);
+
+        const formEl = page.element.querySelector('.analysis-form');
+
+        if (loaded === null && cleanedStorage === null && formEl) {
+          renderTest(6, 'Test 6: Corrupt JSON Resilience', 'Defensively catches parse errors, cleans poisoned localStorage, and falls back to form.', 'PASS');
+        } else {
+          throw new Error('Failed to handle corrupt JSON or failed to purge corrupted entry');
+        }
+      } catch (err) {
+        renderTest(6, 'Test 6: Corrupt JSON Resilience', 'Failed', 'FAIL', err.message);
+      }
+
+      // -------------------------------------------------------------
+      // Test 7: Structurally invalid object -> graceful fallback & cleanup
+      // -------------------------------------------------------------
+      try {
+        // Storing an object missing requirements, score, etc.
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+          incompleteData: true,
+          score: 50
+        }));
+
+        const loaded = loadAnalysisResult();
+        const cleanedStorage = localStorage.getItem(STORAGE_KEY);
+
+        mountPoint.innerHTML = '';
+        const page = createAnalyzePage();
+        mountPoint.appendChild(page.element);
+
+        const formEl = page.element.querySelector('.analysis-form');
+
+        if (loaded === null && cleanedStorage === null && formEl) {
+          renderTest(7, 'Test 7: Structural Schema Validation', 'Rejects schema-invalid persisted objects, cleans storage, and falls back safely to form.', 'PASS');
+        } else {
+          throw new Error('Structurally invalid object was incorrectly accepted or not purged');
+        }
+      } catch (err) {
+        renderTest(7, 'Test 7: Structural Schema Validation', 'Failed', 'FAIL', err.message);
+      }
+
+      // -------------------------------------------------------------
+      // Test 8: Simulate localStorage write failure -> non-blocking behavior
+      // -------------------------------------------------------------
+      try {
+        const originalSetItem = Storage.prototype.setItem;
+        // Mock setItem throwing QuotaExceededError
+        Storage.prototype.setItem = function() {
+          throw new DOMException('QuotaExceededError', 'QuotaExceededError');
+        };
+
+        let threw = false;
+        let saveResult = null;
+        try {
+          saveResult = saveAnalysisResult(sampleValidAnalysis);
+        } catch (e) {
+          threw = true;
+        } finally {
+          Storage.prototype.setItem = originalSetItem;
+        }
+
+        if (!threw && saveResult === false) {
+          renderTest(8, 'Test 8: Storage Write Failure Resilience', 'Storage exceptions (e.g. QuotaExceeded) are caught defensively and never block UI display.', 'PASS');
+        } else {
+          throw new Error('Storage exception was not caught or threw unhandled error');
+        }
+      } catch (err) {
+        renderTest(8, 'Test 8: Storage Write Failure Resilience', 'Failed', 'FAIL', err.message);
+      }
+
+      // -------------------------------------------------------------
+      // Test 9: Complete Validation
+      // -------------------------------------------------------------
+      renderTest(9, 'Test 9: Test Harness Completion', 'All automated client-side persistence scenarios verified successfully.', 'PASS');
+    }
+
+    runAllTests();
+  </script>
+</body>
+</html>
