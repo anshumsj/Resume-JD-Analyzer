@@ -111,7 +111,9 @@ export function createResultsPreview({ data, onReset } = {}) {
   const scoreRow = document.createElement('div');
   scoreRow.className = 'results-verdict__score-row';
 
-  const overallScore = typeof data?.score?.overall === 'number' ? data.score.overall : 0;
+  const overallScore = typeof data?.score?.overall === 'number' && !isNaN(data.score.overall)
+    ? Math.round(data.score.overall)
+    : 0;
 
   const scoreNum = document.createElement('span');
   scoreNum.className = 'results-verdict__score-num';

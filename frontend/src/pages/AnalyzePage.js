@@ -25,9 +25,18 @@ export function createAnalyzePage() {
         showResults(result);
       } catch (err) {
         console.error('Analysis request failed:', err);
-        formComponent.showError(
-          'Unable to complete analysis right now. Please try again. Your resume and job description are still here.'
-        );
+        const isInternalOrNetwork =
+          !err?.message ||
+          err.message.includes('{') ||
+          err.message.includes('status 5') ||
+          err.message.includes('fetch') ||
+          err.message.includes('NetworkError');
+
+        const message = isInternalOrNetwork
+          ? 'Unable to complete analysis right now. Please try again. Your resume and job description are still here.'
+          : err.message;
+
+        formComponent.showError(message);
       }
     }
   });

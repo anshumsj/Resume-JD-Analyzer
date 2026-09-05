@@ -123,6 +123,12 @@
   border-color: var(--color-border-strong);
 }
 
+.analysis-form__retry-btn:focus-visible {
+  outline: none;
+  border-color: var(--color-border-focus);
+  box-shadow: 0 0 0 2px var(--color-accent-subtle);
+}
+
 /* Responsive adjustments */
 @media (max-width: 640px) {
   .analysis-form {

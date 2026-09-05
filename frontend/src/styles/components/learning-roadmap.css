@@ -153,6 +153,13 @@
   text-underline-offset: 2px;
 }
 
+.learning-roadmap__resource-link:focus-visible {
+  outline: none;
+  color: var(--color-accent);
+  box-shadow: 0 0 0 2px var(--color-accent-subtle);
+  border-radius: var(--radius-sm);
+}
+
 .learning-roadmap__link-arrow {
   font-size: 10px;
   color: var(--color-text-muted);
@@ -160,7 +167,8 @@
   flex-shrink: 0;
 }
 
-.learning-roadmap__resource-link:hover .learning-roadmap__link-arrow {
+.learning-roadmap__resource-link:hover .learning-roadmap__link-arrow,
+.learning-roadmap__resource-link:focus-visible .learning-roadmap__link-arrow {
   color: var(--color-accent);
   transform: translate(1px, -1px);
 }
