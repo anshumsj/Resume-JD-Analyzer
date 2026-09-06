@@ -2,18 +2,24 @@ import { z } from 'zod';
 
 /**
  * Zod schema defining the structured candidate resume profile output.
+ * Uses robust array defaults and summary descriptions to handle complete
+ * or partial resumes cleanly without triggering JSON schema validation failures.
  */
 export const resumeSchema = z.object({
   skills: z
-    .array(z.string().min(1))
-    .describe('Technical skills explicitly supported by the resume, including programming languages, frameworks, libraries, databases, cloud/platform technologies, backend technologies, and engineering concepts.'),
+    .array(z.string())
+    .default([])
+    .describe('Technical skills explicitly supported by the resume, including programming languages, frameworks, libraries, databases, cloud/platform tools, backend technologies, and engineering concepts. Return [] if none exist.'),
   experience: z
-    .array(z.string().min(1))
-    .describe('Concise, evidence-based descriptions of professional, internship, or work experiences with technologies and accomplishments directly supported by the resume.'),
+    .array(z.string())
+    .default([])
+    .describe('Concise summary items of professional, internship, or work experiences (1 line per role). Return [] if none exist.'),
   projects: z
-    .array(z.string().min(1))
-    .describe('Concise descriptions of technically relevant projects from the resume, including project names, technologies used, and core accomplishments.'),
+    .array(z.string())
+    .default([])
+    .describe('Concise summary items of technically relevant projects (1 line per project). Return [] if none exist.'),
   education: z
-    .array(z.string().min(1))
-    .describe('Education credentials, degrees, fields of study, and institutions explicitly mentioned in the resume.')
+    .array(z.string())
+    .default([])
+    .describe('Concise summary items of education credentials, degrees, fields of study, and institutions. Return [] if none exist.')
 });

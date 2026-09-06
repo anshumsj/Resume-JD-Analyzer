@@ -108,14 +108,17 @@ export const classifyError = (err) => {
 
   if (isRateLimit) return 'RATE_LIMIT';
 
-  // Transient schema error from Groq JSON validator
-  if (/json_validate_failed/i.test(message)) return 'TRANSIENT_SCHEMA_ERROR';
+  // Deterministic 4xx client errors (400 Bad Request, 401 Unauthorized, 403, 404, json_validate_failed)
+  if (
+    (status >= 400 && status < 500) ||
+    /json_validate_failed/i.test(message) ||
+    err?.error?.code === 'json_validate_failed'
+  ) {
+    return 'NON_RETRYABLE_CLIENT_ERROR';
+  }
 
   // Transient server errors (5xx)
   if (status >= 500 && status < 600) return 'TRANSIENT_SERVER_ERROR';
-
-  // Client non-retryable 4xx errors (400, 401, 403, 404)
-  if (status >= 400 && status < 500) return 'NON_RETRYABLE_CLIENT_ERROR';
 
   // Transient network connection errors
   if (/ECONNRESET|ETIMEDOUT|ENOTFOUND|fetch failed/i.test(message)) {
@@ -146,10 +149,20 @@ export const createGroqChatModel = (temperature = 0.1, maxTokens = undefined) =>
 
 /**
  * Rate-limit-aware helper to invoke structured model with delay parsing and bounded retry.
+ * Accepts either a factory function `async () => result` or a pre-bound `structuredLlm` + `prompt`.
  */
-export const invokeWithRetry = async (structuredLlm, prompt, options = {}) => {
-  // Support numeric maxRetries shorthand for backward compatibility
-  const config = typeof options === 'number' ? { maxRetries: options } : options;
+export const invokeWithRetry = async (fnOrStructuredLlm, promptOrOptions = {}, options = {}) => {
+  let fn;
+  let config;
+
+  if (typeof fnOrStructuredLlm === 'function') {
+    fn = fnOrStructuredLlm;
+    config = typeof promptOrOptions === 'number' ? { maxRetries: promptOrOptions } : promptOrOptions;
+  } else {
+    fn = () => fnOrStructuredLlm.invoke(promptOrOptions);
+    config = typeof options === 'number' ? { maxRetries: options } : options;
+  }
+
   const maxRetries = config.maxRetries ?? 5;
   const sleepFn = config.sleepFn ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
   const onRetry = config.onRetry ?? null;
@@ -158,13 +171,13 @@ export const invokeWithRetry = async (structuredLlm, prompt, options = {}) => {
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      const res = await structuredLlm.invoke(prompt);
+      const res = await fn();
       return res;
     } catch (err) {
       lastError = err;
       const errorType = classifyError(err);
 
-      // Non-retryable client error (400 Bad Request, 401 Unauthorized, etc.)
+      // Non-retryable client error (400 Bad Request, 401 Unauthorized, json_validate_failed, etc.)
       if (errorType === 'NON_RETRYABLE_CLIENT_ERROR') {
         const sanitizedDetails = sanitizeErrorMessage(err?.message);
         console.error(`[Non-Retryable Error ${err.status || 400}]: ${sanitizedDetails}`);
@@ -206,10 +219,9 @@ export const invokeWithRetry = async (structuredLlm, prompt, options = {}) => {
         continue;
       }
 
-      // Transient 5xx / schema validation / network error handling
+      // Transient 5xx / network error handling
       if (
         errorType === 'TRANSIENT_SERVER_ERROR' ||
-        errorType === 'TRANSIENT_SCHEMA_ERROR' ||
         errorType === 'TRANSIENT_NETWORK_ERROR'
       ) {
         const waitMs = 1500 + Math.floor(Math.random() * 500);
@@ -254,24 +266,21 @@ export const extractResumeProfile = async (resumeText, options = {}) => {
   const structuredLlm = model.withStructuredOutput(resumeSchema);
 
   const prompt = `You are an expert technical resume parser and talent analyst.
-Extract a structured candidate profile from the provided resume text into the specified schema.
+Extract a concise, structured candidate profile from the provided resume text into the specified schema.
+You MUST respond with a valid JSON object adhering strictly to the required schema. Do NOT include markdown formatting or extra conversational text outside the JSON object.
 
-STRICT ANTI-HALLUCINATION & EXTRACTION RULES:
-1. Use ONLY information explicitly contained in the supplied resume text.
-2. Never infer a skill merely because another skill usually implies it.
-3. Never assume experience with a technology or tool that is not explicitly mentioned.
-4. Do NOT convert a project into technologies or tools that the resume does not mention.
-5. Preserve the distinction between explicit evidence and inference.
-6. Do NOT invent employment, education, projects, certifications, or skills.
-7. Keep all extracted items concise, accurate, and faithful to the resume text.
-8. Do NOT perform Job Description matching in this stage.
-9. Do NOT calculate any score or make any evaluation.
+EXTRACTION RULES & BEST PRACTICES:
+1. Extract ONLY information explicitly supported by the supplied resume text. Do NOT invent or infer missing experience, education, projects, or skills.
+2. ULTRA-COMPACT SUMMARIES: Keep extracted experience, project, and education entries as short 1-line summary strings (maximum 10 words per entry) focusing on title, key technology, and role. Do NOT copy multi-paragraph text or full bullet point lists.
+3. CORE SKILLS: Extract explicit technical skills (programming languages, frameworks, libraries, databases, cloud/DevOps tools, and core engineering concepts). Limit to maximum 20 core skills.
+4. ABSENT SECTIONS: If a section (e.g. experience, projects, or education) is absent or not mentioned in the resume, return an empty array [] for that field.
+5. Do NOT perform job matching, scoring, or candidate evaluation.
 
 FIELD INSTRUCTIONS:
-- skills: Extract technical skills explicitly supported by the resume (languages, frameworks, libraries, databases, cloud/platform tools, backend technologies, and engineering concepts). Do NOT invent skills based on project names alone.
-- experience: Extract concise, evidence-based descriptions of professional, work, or internship experience relevant to technical roles. Preserve meaningful technologies and accomplishments.
-- projects: Extract concise descriptions of technically relevant projects, including project names, technologies used, and core accomplishments.
-- education: Extract education information explicitly present in the resume (degrees, majors, institutions, and dates). Do not invent status or qualifications.
+- skills: Array of explicit technical skills and concepts mentioned in the resume (max 20).
+- experience: Array of concise summary items (1 short line per role, max 10 words each). Return [] if none exist.
+- projects: Array of concise summary items (1 short line per project, max 10 words each). Return [] if none exist.
+- education: Array of concise summary items (1 short line per degree/credential, max 10 words each). Return [] if none exist.
 
 CANDIDATE RESUME TEXT:
 ---
@@ -280,8 +289,14 @@ ${resumeText}
 
   try {
     const rawResult = await invokeWithRetry(structuredLlm, prompt, options);
-    const validatedResult = resumeSchema.parse(rawResult);
-    return validatedResult;
+    const validatedResult = resumeSchema.parse(rawResult || {});
+
+    return {
+      skills: deduplicateAndNormalizeSkills(validatedResult.skills || []),
+      experience: deduplicateAndNormalizeSkills(validatedResult.experience || []),
+      projects: deduplicateAndNormalizeSkills(validatedResult.projects || []),
+      education: deduplicateAndNormalizeSkills(validatedResult.education || [])
+    };
   } catch (error) {
     const rawMsg = error?.message || 'Unknown resume extraction error';
     const sanitizedMsg = sanitizeErrorMessage(rawMsg);
@@ -339,6 +354,7 @@ export const extractJobRequirements = async (jobDescription, options = {}) => {
 
   const prompt = `You are an expert technical recruiter analyzing a Job Description (JD).
 Extract the structured requirements from the provided Job Description into the specified schema.
+You MUST respond with a valid JSON object adhering strictly to the required schema. Do NOT include markdown formatting or extra conversational text outside the JSON object.
 
 CRITICAL COMPREHENSIVE EXTRACTION RULES:
 1. Base your extraction ONLY on the supplied Job Description. Do NOT invent technologies, responsibilities, or qualifications not mentioned in the text.
@@ -406,7 +422,7 @@ CLASSIFICATION DEFINITIONS:
 - "related":
   The resume demonstrates a different but meaningfully related technology or skill that provides relevant transferable knowledge.
   Example: JD asks for "PostgreSQL" and resume has "MySQL" (both are SQL relational databases).
-  ONLY use "related" when the relationship is technically meaningful. Do not treat arbitrary technologies as related.
+  ONLY use "related" when the relationship is technically meaningful. Do Not treat arbitrary technologies as related.
 
 - "partial":
   The resume provides some evidence toward the requirement but does not demonstrate the complete or broad scope of the requirement.
